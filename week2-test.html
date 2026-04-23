@@ -1,36 +1,82 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Three.js Test</title>
     <style>
-        body { margin: 0; overflow: hidden; }
+        .tool-btn {
+            transition: all 0.15s;
+        }
+
+        .tool-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .tool-btn.active {
+            background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
+            box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
+            border: 2px solid #60a5fa;
+        }
     </style>
-     <script src="https://cdn.tailwindcss.com"></script>   
+
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
+
 <body>
 
-        <!-- 替换之前的简陋 UI -->
-            <div id="coord-display" class="fixed bottom-5 left-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg font-mono text-sm">
-            座標: -
-            </div>
+    <!-- 替换之前的简陋 UI -->
+    <div id="coord-display"
+        class="fixed bottom-5 right-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg font-mono text-sm">
+        座標: -
+    </div>
 
-            <div id="counter" class="fixed top-5 left-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg">
-            配置済み: <span class="font-bold text-blue-400">0</span> 個
-            </div>
+    <div id="counter" class="fixed bottom-5 left-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg space-y-1 text-sm">
+        <div>🏗️ クレーン: <span id="count-crane" class="font-bold text-yellow-400">0</span></div>
+        <div>📦 吊荷: <span id="count-load" class="font-bold text-orange-400">0</span></div>
+        <div>🟨 敷鉄板: <span id="count-plate" class="font-bold text-yellow-200">0</span></div>
+    </div>
 
-            <button id="reset-btn" class="fixed top-5 right-5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold">
-            🗑️ クリア
-            </button>
-            <!-- 顶部加工具栏 -->
-        
-            <div class="fixed top-5 left-1/2 -translate-x-1/2 bg-slate-900/80 p-2 rounded-lg flex gap-2">
-        <button id="select-mode" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white">
-            👆 選択
+    <button id="undo-btn" class="fixed top-5 right-32 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg">
+        ↶ 元に戻す
+    </button>
+
+    <!-- 顶部加工具栏 -->
+
+
+    <div id="tool-palette" class="fixed top-5 left-5 bg-slate-900/90 p-2 rounded-lg flex flex-col gap-2 z-50">
+        <button
+            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
+            data-tool="select">
+            <span class="text-2xl">👆</span>
+            <span>選択</span>
         </button>
-        <button id="place-mode" class="px-4 py-2 bg-blue-600 text-white rounded font-bold">
-            🔴 配置
+
+        <button
+            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
+            data-tool="crane">
+            <span class="text-2xl">🏗️</span>
+            <span>クレーン</span>
         </button>
-        </div>
+
+        <button
+            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
+            data-tool="load">
+            <span class="text-2xl">📦</span>
+            <span>吊荷</span>
+        </button>
+
+        <button
+            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
+            data-tool="plate">
+            <span class="text-2xl">🟨</span>
+            <span>敷鉄板</span>
+        </button>
+    </div>
+    <div id="info-panel" class="fixed top-5 right-20 bg-slate-900/80 text-white p-4 rounded-lg w-64 hidden">
+        <h3 class="font-bold mb-2">選択中</h3>
+        <div id="info-content"></div>
+    </div>
+
 
     <script type="importmap">
 {
@@ -40,24 +86,31 @@
     }
 }
 </script>
-    
+
     <script type="module">
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import * as THREE from 'three';
 
-        
+        // === 1. 状态 ===
         const placedObjects = [];
-        let placeMode = true;   // ⭐ 加这一行（开关：true=放置模式开，false=关）
+        let currentTool = 'crane';
+        let selectedObject = null;
+        let ghost = null;
 
+
+
+
+
+        // === 2. Three.js 基础设置 ===
         // 1. シーン作成
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb); // 空色
 
         // 2. カメラ作成
         const camera = new THREE.PerspectiveCamera(
-            75, 
+            75,
             window.innerWidth / window.innerHeight,
-            0.1, 
+            0.1,
             1000
         );
         camera.position.z = 5;
@@ -71,23 +124,8 @@
         renderer.shadowMap.enabled = true;
 
 
-        // 4. 立方体を作る
-        const geometry = new THREE.BoxGeometry(1, 1, 1);
-        const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
 
-        // もう一つの立方体（赤）
-        const cube2Geom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-        const cube2Mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        //const cube2 = new THREE.Mesh(cube2Geom, cube2Mat);
-        //cube2.position.x = 2;  // 右に 2 移動
-        //scene.add(cube2);
-
-        // 球体（青）
-        const sphereGeom = new THREE.SphereGeometry(0.7, 32, 32);
-        const sphereMat = new THREE.MeshStandardMaterial({ color: 0x0000ff });
-        // const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-        // sphere.position.x = -2;  // 左に 2 移動
-        // scene.add(sphere);
+        // === 3. 场景内容 ===
 
         //Set the light
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
@@ -99,7 +137,7 @@
         scene.add(directionalLight);
         directionalLight.castShadow = true;
 
-        
+
         //add the ground
         const groundGeom = new THREE.PlaneGeometry(20, 20);
         const groundMat = new THREE.MeshStandardMaterial({ color: 0x5a7a5a });
@@ -109,19 +147,155 @@
         scene.add(ground);
         ground.receiveShadow = true;
 
-        // Ghost 物体（半透明的预览球）
-            const ghost = new THREE.Mesh(
-            new THREE.SphereGeometry(0.3),
-            new THREE.MeshStandardMaterial({
-                color: 0xff0000,
-                transparent: true,
-                opacity: 0.4  // 半透明！
-            })
-            );
-            ghost.position.y = 0.3;
+
+        // === 4. 工具相关函数 ===
+
+        function selectTool(toolName) {
+            currentTool = toolName;
+
+            document.querySelectorAll('.tool-btn').forEach(b => {
+                b.classList.remove('active');
+            });
+            document.querySelector(`[data-tool="${toolName}"]`).classList.add('active');
+
+            updateGhost();  // ⭐ 切换工具时更新 ghost
+        }
+
+        function updateGhost() {
+            // 删除旧 ghost
+            if (ghost) {
+                scene.remove(ghost);
+                ghost = null;
+            }
+
+            // 根据当前工具创建新 ghost
+            let geometry, material;
+
+            switch (currentTool) {
+                case 'crane':
+                    geometry = new THREE.CylinderGeometry(0.5, 0.7, 1.5);
+                    material = new THREE.MeshStandardMaterial({ color: 0xffc800, transparent: true, opacity: 0.5 });
+                    break;
+                case 'load':
+                    geometry = new THREE.BoxGeometry(1, 1, 1);
+                    material = new THREE.MeshStandardMaterial({ color: 0x8b6f47, transparent: true, opacity: 0.5 });
+                    break;
+                case 'plate':
+                    geometry = new THREE.BoxGeometry(1.5, 0.1, 3);
+                    material = new THREE.MeshStandardMaterial({ color: 0xffd700, transparent: true, opacity: 0.5 });
+                    break;
+                case 'select':
+                    return;  // 选择模式不要 ghost
+            }
+
+            ghost = new THREE.Mesh(geometry, material);
             scene.add(ghost);
+        }
+
+        function placeCrane(point) {
+            // 黄色圆柱（暂时简化的吊车）
+            const crane = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.5, 0.7, 1.5),
+                new THREE.MeshStandardMaterial({ color: 0xffc800 })
+            );
+            crane.position.copy(point);
+            crane.position.y = -1 + 0.75;  // 地面 + 半高
+            crane.castShadow = true;
+            crane.userData = { type: 'crane' };  // ⭐ 打标签
+            scene.add(crane);
+            placedObjects.push(crane);
+            updateCounters();
+        }
+
+        function placeLoad(point) {
+            // 棕色立方体（吊荷）
+            const load = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1, 1),
+                new THREE.MeshStandardMaterial({ color: 0x8b6f47 })
+            );
+            load.position.copy(point);
+            load.position.y = -1 + 0.5;
+            load.castShadow = true;
+            load.userData = { type: 'load' };
+            scene.add(load);
+            placedObjects.push(load);
+            updateCounters();
+        }
+
+        function placePlate(point) {
+            // 黄色扁平方块（敷铁板）
+            const plate = new THREE.Mesh(
+                new THREE.BoxGeometry(1.5, 0.1, 3),
+                new THREE.MeshStandardMaterial({ color: 0xffd700 })
+            );
+            plate.position.copy(point);
+            plate.position.y = -1 + 0.05;
+            plate.receiveShadow = true;
+            plate.userData = { type: 'plate' };
+            scene.add(plate);
+            placedObjects.push(plate);
+            updateCounters();
+        }
+
+        function showInfo(obj) {
+            const panel = document.getElementById('info-panel');
+            const content = document.getElementById('info-content');
+
+            if (!obj) {
+                panel.classList.add('hidden');
+                return;
+            }
+
+            const typeNames = {
+                crane: '🏗️ クレーン',
+                load: '📦 吊荷',
+                plate: '🟨 敷鉄板'
+            };
+
+            content.innerHTML = `
+        <div>種類: ${typeNames[obj.userData.type]}</div>
+        <div>位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}</div>
+        <div class="text-xs text-slate-400 mt-2">DEL キーで削除</div>
+    `;
+            panel.classList.remove('hidden');
+        }
 
 
+
+
+        function handleSelect() {
+            // 这次检测的是已放置的物体，不是地面
+            const intersects = raycaster.intersectObjects(placedObjects);
+
+            // 取消之前的选中
+            if (selectedObject) {
+                selectedObject.material.emissive.setHex(0x000000);
+                selectedObject = null;
+            }
+
+            // 选中新的
+            if (intersects.length > 0) {
+                selectedObject = intersects[0].object;
+                selectedObject.material.emissive.setHex(0x0000ff);  // 蓝色发光
+                console.log('选中了:', selectedObject.userData.type);
+            }
+            // 在 handleSelect 里调用
+            showInfo(selectedObject);
+        }
+
+
+        function updateCounters() {
+            const cranes = placedObjects.filter(o => o.userData.type === 'crane');
+            const loads = placedObjects.filter(o => o.userData.type === 'load');
+            const plates = placedObjects.filter(o => o.userData.type === 'plate');
+
+            document.getElementById('count-crane').textContent = cranes.length;
+            document.getElementById('count-load').textContent = loads.length;
+            document.getElementById('count-plate').textContent = plates.length;
+        }
+
+
+        // === 5. 事件监听 ===
 
         // 在你已有的代码下面
         const raycaster = new THREE.Raycaster();
@@ -129,94 +303,107 @@
 
         // 监听鼠标移动
         window.addEventListener('mousemove', (event) => {
-                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-                
-                raycaster.setFromCamera(mouse, camera);
-                const intersects = raycaster.intersectObject(ground);
-                
-                if (intersects.length > 0) {
-                    const point = intersects[0].point;
-                    
-                    // 坐标显示总是更新
-                    document.getElementById('coord-display').textContent = 
-                        `座標: X=${point.x.toFixed(2)}, Z=${point.z.toFixed(2)}`;
-                    
-                    // ⭐ 只有 placeMode 开时才更新 ghost
-                    if (placeMode) {
-                        ghost.position.x = point.x;
-                        ghost.position.z = point.z;
-                    }
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(ground);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+
+                document.getElementById('coord-display').textContent =
+                    `座標: X=${point.x.toFixed(2)}, Z=${point.z.toFixed(2)}`;
+
+                if (ghost) {
+                    ghost.position.x = point.x;
+                    ghost.position.z = point.z;
+                    // Y 位置根据形状不同要调整
+                    if (currentTool === 'crane') ghost.position.y = -0.25;
+                    if (currentTool === 'load') ghost.position.y = -0.5;
+                    if (currentTool === 'plate') ghost.position.y = -0.95;
                 }
-            });
+            }
+        });
 
 
         window.addEventListener('click', (event) => {
-            // ⭐ 如果 placeMode 关了，直接退出（什么都不做）
-            if (!placeMode) return;
-            
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            
+
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(ground);
-            
-            if (intersects.length > 0) {
-                const point = intersects[0].point;
-                
-                const sphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.3),
-                    new THREE.MeshStandardMaterial({ color: 0xff0000 })
-                );
-                sphere.position.copy(point);
-                sphere.position.y = -0.7;
-                sphere.castShadow = true;
-                scene.add(sphere);
-                placedObjects.push(sphere);
-                updateCounter();
+
+            if (intersects.length === 0) return;  // 没点到地面
+
+            const point = intersects[0].point;
+
+            // ⭐ 根据工具做不同的事
+            switch (currentTool) {
+                case 'crane':
+                    placeCrane(point);
+                    break;
+                case 'load':
+                    placeLoad(point);
+                    break;
+                case 'plate':
+                    placePlate(point);
+                    break;
+                case 'select':
+                    handleSelect();
+                    break;
+
             }
         });
-        
+
         window.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-        placeMode = false;       // 关闭开关
-        ghost.visible = false;    // 隐藏 ghost
-        console.log('放置モード OFF');
-        }
+            // ESC 切回选择工具
+            if (event.key === 'Escape') {
+                selectTool('select');
+            }
+
+            // ⭐ DEL 或 Backspace 删除选中物体
+            if (event.key === 'Delete' || event.key === 'Backspace') {
+                if (selectedObject) {
+                    scene.remove(selectedObject);
+                    // 从数组中也删除
+                    const index = placedObjects.indexOf(selectedObject);
+                    if (index > -1) placedObjects.splice(index, 1);
+
+                    selectedObject = null;
+                    updateCounters();
+                    console.log('删除完了');
+                }
+            }
         });
 
-        function updateCounter() {
-            document.getElementById('counter').textContent = 
-            `配置済み: ${placedObjects.length} 個`;
-        }
-
-    
 
 
 
-        document.getElementById('select-mode').addEventListener('click', () => {
-            placeMode = false;
-            ghost.visible = false;
-            // UI 更新
-            document.getElementById('select-mode').className = 
-                'px-4 py-2 bg-blue-600 text-white rounded font-bold';
-            document.getElementById('place-mode').className = 
-                'px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white';
+        // 工具切换
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const toolName = btn.dataset.tool;  // 取 data-tool 的值
+                selectTool(toolName);
             });
-
-        document.getElementById('place-mode').addEventListener('click', () => {
-            placeMode = true;
-            ghost.visible = true;
-            // UI 更新（反过来）
-            document.getElementById('place-mode').className = 
-                'px-4 py-2 bg-blue-600 text-white rounded font-bold';
-            document.getElementById('select-mode').className = 
-                'px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white';
-            });
+        });
 
 
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            if (placedObjects.length === 0) return;
+
+            const last = placedObjects.pop();  // 取最后一个
+            scene.remove(last);
+            updateCounters();
+        });
 
 
+
+
+        // === 6. 启动 ===
+
+        // 默认选中 crane
+        selectTool('crane');
         // 5. アニメーションループ
         function animate() {
             requestAnimationFrame(animate);
@@ -225,12 +412,9 @@
         }
         animate();
 
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            placedObjects.forEach(obj => scene.remove(obj));
-            placedObjects.length = 0;  // 清空数组
-            updateCounter();
-        });
-        
+
+
     </script>
 </body>
+
 </html>
