@@ -72,10 +72,29 @@
             <span>敷鉄板</span>
         </button>
     </div>
+
+    <div id="loading" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 text-white text-2xl">
+            🏗️ 読み込み中...
+    </div>
+
+
+
+
+
     <div id="info-panel" class="fixed top-5 right-20 bg-slate-900/80 text-white p-4 rounded-lg w-64 hidden">
         <h3 class="font-bold mb-2">選択中</h3>
         <div id="info-content"></div>
     </div>
+
+    <div id="crane-info" class="fixed bottom-20 right-5 bg-slate-900/80 text-white p-4 rounded-lg hidden">
+        <div class="font-bold mb-2">🏗️ クレーン情報</div>
+        <div>型式: TADANO GR-250N</div>
+        <div>作業半径: 7.0 m</div>
+        <div>配置数: <span id="info-count">0</span></div>
+    </div>
+
+
+
 
 
     <script type="importmap">
@@ -89,6 +108,7 @@
 
     <script type="module">
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';  // ADD GLFT
         import * as THREE from 'three';
 
         // === 1. 状态 ===
@@ -96,6 +116,12 @@
         let currentTool = 'crane';
         let selectedObject = null;
         let ghost = null;
+        let craneTemplate = null;
+        let loadedCount = 0;
+        const totalLoads = 2;
+        let siteModel = null;  
+
+
 
 
 
@@ -147,6 +173,35 @@
         scene.add(ground);
         ground.receiveShadow = true;
 
+        // 加载 Python 生成的 吊车模型
+        const gltfLoader = new GLTFLoader();
+
+        gltfLoader.load('./models/crane_TADANO_GR-250N.glb', (gltf) => {
+            craneTemplate = gltf.scene;
+            checkLoaded();
+            console.log('✅ 吊车模板加载完成');
+        });
+        
+        // 加载场地
+        gltfLoader.load(
+            './models/site.glb',
+            (gltf) => {
+                checkLoaded();
+                console.log('✅ 场地加载完成');
+                gltf.scene.position.set(0, -1, 0);
+                
+                // ⭐ 让 site 能接收影子和被检测
+                gltf.scene.traverse(child => {
+                    if (child.isMesh) {
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                siteModel = gltf.scene;  // ⭐ 保存引用
+                scene.add(gltf.scene);
+            }
+        );
+
 
         // === 4. 工具相关函数 ===
 
@@ -193,18 +248,53 @@
         }
 
         function placeCrane(point) {
-            // 黄色圆柱（暂时简化的吊车）
-            const crane = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.5, 0.7, 1.5),
-                new THREE.MeshStandardMaterial({ color: 0xffc800 })
-            );
+            if (!craneTemplate) {
+                console.log('吊车模型还没加载完，请稍等');
+                return;
+            }
+            
+            // 克隆模板（因为一个模型不能用多次）
+            const crane = craneTemplate.clone();
             crane.position.copy(point);
-            crane.position.y = -1 + 0.75;  // 地面 + 半高
-            crane.castShadow = true;
-            crane.userData = { type: 'crane' };  // ⭐ 打标签
+            crane.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    // ✅ 关键：复制 material，让每辆吊车有自己的 material
+                    if (child.material) {
+                        child.material = child.material.clone();
+                    }
+                }
+            });
+
+
+            crane.userData = { type: 'crane' };
             scene.add(crane);
             placedObjects.push(crane);
             updateCounters();
+
+
+                // ⭐ 加作业半径圆
+            const radiusGeom = new THREE.RingGeometry(10, 12, 64);  // 内径 6.8, 外径 7.0
+            const radiusMat = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.5
+            });
+            const radiusCircle = new THREE.Mesh(radiusGeom, radiusMat);
+            radiusCircle.rotation.x = -Math.PI / 2;  // 平放
+            radiusCircle.position.copy(point);
+            radiusCircle.position.y += 0.05;  // 稍高于地面
+            scene.add(radiusCircle);
+            
+            // 让圆跟随吊车（如果以后要删除吊车，圆也要删）
+            crane.userData.radiusCircle = radiusCircle;
+
+            document.getElementById('crane-info').classList.remove('hidden');
+            const count = placedObjects.filter(o => o.userData.type === 'crane').length;
+            document.getElementById('info-count').textContent = count;
+
+        
         }
 
         function placeLoad(point) {
@@ -214,7 +304,7 @@
                 new THREE.MeshStandardMaterial({ color: 0x8b6f47 })
             );
             load.position.copy(point);
-            load.position.y = -1 + 0.5;
+            load.position.y +=  0.5;
             load.castShadow = true;
             load.userData = { type: 'load' };
             scene.add(load);
@@ -229,7 +319,7 @@
                 new THREE.MeshStandardMaterial({ color: 0xffd700 })
             );
             plate.position.copy(point);
-            plate.position.y = -1 + 0.05;
+            plate.position.y +=  0.05;
             plate.receiveShadow = true;
             plate.userData = { type: 'plate' };
             scene.add(plate);
@@ -264,24 +354,43 @@
 
 
         function handleSelect() {
-            // 这次检测的是已放置的物体，不是地面
-            const intersects = raycaster.intersectObjects(placedObjects);
-
+            const intersects = raycaster.intersectObjects(placedObjects, true);  // ⭐ true = 递归
+            
             // 取消之前的选中
             if (selectedObject) {
-                selectedObject.material.emissive.setHex(0x000000);
+                clearHighlight(selectedObject);
                 selectedObject = null;
             }
-
-            // 选中新的
+            
             if (intersects.length > 0) {
-                selectedObject = intersects[0].object;
-                selectedObject.material.emissive.setHex(0x0000ff);  // 蓝色发光
-                console.log('选中了:', selectedObject.userData.type);
+                // ⭐ 找到根对象（placedObjects 里的那个）
+                const root = findRootObject(intersects[0].object);
+                if (root) {
+                    selectedObject = root;
+                    applyHighlight(selectedObject);
+                    console.log('选中了:', selectedObject.userData.type);
+                }
             }
-            // 在 handleSelect 里调用
+            
             showInfo(selectedObject);
         }
+
+
+        function findRootObject(mesh) {
+            // 沿着父级向上找，直到找到 placedObjects 里的物体
+            let obj = mesh;
+            while (obj) {
+                if (placedObjects.includes(obj)) {
+                    return obj;
+                }
+                obj = obj.parent;
+            }
+            return null;
+        }
+
+
+
+
 
 
         function updateCounters() {
@@ -293,6 +402,53 @@
             document.getElementById('count-load').textContent = loads.length;
             document.getElementById('count-plate').textContent = plates.length;
         }
+        
+
+        function checkLoaded() {
+            loadedCount++;
+            if (loadedCount >= totalLoads) {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function applyHighlight(obj) {
+            obj.traverse(child => {
+                if (child.isMesh && child.material && child.material.emissive) {
+                    // ✅ 用 undefined 判断（0 也算"已保存过"）
+                    if (child.userData._origEmissive === undefined) {
+                        child.userData._origEmissive = child.material.emissive.getHex();
+                    }
+                    child.material.emissive.setHex(0x0044ff);
+                }
+            });
+        }
+
+        function clearHighlight(obj) {
+            obj.traverse(child => {
+                if (child.isMesh && child.material && child.material.emissive) {
+                    if (child.userData._origEmissive !== undefined) {
+                        child.material.emissive.setHex(child.userData._origEmissive);
+                    } else {
+                        child.material.emissive.setHex(0x000000);
+                    }
+                }
+            });
+        }
+
+        function getGroundIntersect() {
+                const targets = [ground];
+                if (siteModel) {
+                    // 把 site 的所有子 mesh 都加进来
+                    siteModel.traverse(child => {
+                        if (child.isMesh) targets.push(child);
+                    });
+                }
+                return raycaster.intersectObjects(targets);  // ⭐ Objects (复数)
+        }
+
+
+
+
 
 
         // === 5. 事件监听 ===
@@ -307,7 +463,7 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(ground);
+            const intersects = getGroundIntersect();
 
             if (intersects.length > 0) {
                 const point = intersects[0].point;
@@ -316,12 +472,11 @@
                     `座標: X=${point.x.toFixed(2)}, Z=${point.z.toFixed(2)}`;
 
                 if (ghost) {
-                    ghost.position.x = point.x;
-                    ghost.position.z = point.z;
+                    ghost.position.copy(point);  // ⭐ 用 copy，自动包含 Y
                     // Y 位置根据形状不同要调整
-                    if (currentTool === 'crane') ghost.position.y = -0.25;
-                    if (currentTool === 'load') ghost.position.y = -0.5;
-                    if (currentTool === 'plate') ghost.position.y = -0.95;
+                    if (currentTool === 'crane') ghost.position.y += 0.75;
+                    if (currentTool === 'load') ghost.position.y += 0.75;
+                    if (currentTool === 'plate') ghost.position.y += 0.75;
                 }
             }
         });
@@ -332,7 +487,7 @@
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(ground);
+            const intersects = getGroundIntersect();  // ⭐ 改这里
 
             if (intersects.length === 0) return;  // 没点到地面
 
@@ -365,14 +520,16 @@
             // ⭐ DEL 或 Backspace 删除选中物体
             if (event.key === 'Delete' || event.key === 'Backspace') {
                 if (selectedObject) {
+                    // ⭐ 如果是吊车，还要删除它的半径圆
+                    if (selectedObject.userData.radiusCircle) {
+                        scene.remove(selectedObject.userData.radiusCircle);
+                    }
+                    
                     scene.remove(selectedObject);
-                    // 从数组中也删除
                     const index = placedObjects.indexOf(selectedObject);
                     if (index > -1) placedObjects.splice(index, 1);
-
                     selectedObject = null;
                     updateCounters();
-                    console.log('删除完了');
                 }
             }
         });
