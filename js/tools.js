@@ -14,6 +14,30 @@ export function selectTool(toolName) {
     updateGhost();
     
     document.getElementById('plate-options').classList.toggle('hidden', toolName !== 'plate');
+    
+    // ⭐ 切换工具时取消正在画的
+    if (state.drawingPoints.length > 0) {
+        state.drawingPoints = [];
+        if (state.drawingPreview) {
+            scene.remove(state.drawingPreview);
+            state.drawingPreview = null;
+        }
+    }
+    
+    // ⭐ 显示提示
+    const hint = document.getElementById('drawing-hint');
+    if (toolName === 'forbidden') {
+        document.getElementById('hint-text').textContent = '🚫 地面をクリックして禁止区の角を指定 (3 点以上 + Enter で確定)';
+        hint.classList.remove('hidden');
+    } else if (toolName === 'path') {
+        document.getElementById('hint-text').textContent = '🟢 地面をクリックして通路の点を追加 (Enter で確定)';
+        hint.classList.remove('hidden');
+    } else if (toolName === 'measure') {
+        document.getElementById('hint-text').textContent = '📏 2 点をクリックして距離を測定';
+        hint.classList.remove('hidden');
+    } else {
+        hint.classList.add('hidden');
+    }
 }
 
 // ============= Ghost =============
@@ -237,10 +261,16 @@ export function updateCounters() {
     const cranes = state.placedObjects.filter(o => o.userData.type === 'crane');
     const loads = state.placedObjects.filter(o => o.userData.type === 'load');
     const plates = state.placedObjects.filter(o => o.userData.type === 'plate');
+    const forbidden = state.placedObjects.filter(o => o.userData.type === 'forbidden');
+    const paths = state.placedObjects.filter(o => o.userData.type === 'path');
+    const measures = state.placedObjects.filter(o => o.userData.type === 'measure');
 
+    
     document.getElementById('count-crane').textContent = cranes.length;
     document.getElementById('count-load').textContent = loads.length;
     document.getElementById('count-plate').textContent = plates.length;
+    document.getElementById('count-forbidden').textContent = forbidden.length;
+    document.getElementById('count-path').textContent = paths.length;
 }
 
 export function updateCraneButton() {

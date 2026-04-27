@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { checkSafety } from './safety-tools.js';
+
 
 // ============= 场景基础 =============
 export const scene = new THREE.Scene();
@@ -23,6 +26,18 @@ document.body.appendChild(renderer.domElement);
 
 export const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+
+
+// ============= 标签渲染器 =============
+export const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'fixed';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.left = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';  // 不挡鼠标
+document.body.appendChild(labelRenderer.domElement);
+
+
 
 // ============= 光照 =============
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
@@ -79,10 +94,20 @@ export function loadModels(onAllLoaded) {
 
 // ============= 动画循环 =============
 export function startAnimationLoop() {
+    let lastSafetyCheck = 0;
+    
     function animate() {
         requestAnimationFrame(animate);
         controls.update();
         renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
+        
+        // 安全检测每 500ms 一次（不用每帧都查）
+        const now = Date.now();
+        if (now - lastSafetyCheck > 500) {
+            checkSafety();
+            lastSafetyCheck = now;
+        }
     }
     animate();
 }
@@ -97,3 +122,5 @@ export function getGroundIntersect() {
     }
     return raycaster.intersectObjects(targets);
 }
+
+export { CSS2DObject };

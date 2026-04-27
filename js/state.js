@@ -4,5 +4,7 @@ export const state = {
     currentTool: 'crane',
     selectedObject: null,
     ghost: null,
-    currentPlateSize: { x: 1.5, z: 3 }
+    currentPlateSize: { x: 1.5, z: 3 },
+    drawingPoints: [],        // 正在画的点
+    drawingPreview: null,     // 预览的虚线
 };

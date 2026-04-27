@@ -14,6 +14,17 @@ import { serialize, deserialize, startAutoSave } from './persistence.js';
 
 import { state } from './state.js';
 
+import {
+    addForbiddenPoint, finishForbiddenZone,
+    addPathPoint, finishPath,  
+    addMeasurePoint, cancelMeasure,    
+    cancelDrawing, showHint, hideHint
+} from './safety-tools.js';
+
+import { checkSafety } from './safety-tools.js';
+
+
+
 // ============= 鼠标移动 =============
 window.addEventListener('mousemove', (event) => {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -65,21 +76,56 @@ window.addEventListener('click', (event) => {
         case 'crane': placeCrane(point); break;
         case 'load': placeLoad(point); break;
         case 'plate': placePlate(point); break;
+        case 'forbidden': addForbiddenPoint(point); break;  // ⭐ 新增
+        case 'path': addPathPoint(point); break;
+        case 'measure': addMeasurePoint(point); break;  
     }
 });
 
 // ============= 键盘 =============
 window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-        selectTool('select');
+        if (state.drawingPoints.length > 0) {
+            cancelDrawing();   // ⭐ 优先取消正在画的
+        } else if (state.currentTool === 'measure') {
+            cancelMeasure();   // ⭐ 新增
+            selectTool('select');
+        } else {
+            selectTool('select');
+        }
+    }
+
+    if (event.key === 'Enter') {
+        if (state.currentTool === 'forbidden' && state.drawingPoints.length >= 3) {
+            finishForbiddenZone();
+        }
+        if (state.currentTool === 'path' && state.drawingPoints.length >= 2) {
+            finishPath();   // ⭐ 新增
+        }
     }
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
         if (state.selectedObject) {
+            // ⭐ 如果是禁止区，也删除边框
+            if (state.selectedObject.userData.border) {
+                scene.remove(state.selectedObject.userData.border);
+            }
             if (state.selectedObject.userData.radiusCircle) {
                 scene.remove(state.selectedObject.userData.radiusCircle);
             }
             
+            if (state.selectedObject.userData.arrows) {   // ⭐ 新增
+                state.selectedObject.userData.arrows.forEach(a => scene.remove(a));
+            }
+
+            if (state.selectedObject.userData.label) {
+                scene.remove(state.selectedObject.userData.label);
+            }
+
+            if (state.selectedObject.userData.balls) {
+                state.selectedObject.userData.balls.forEach(b => scene.remove(b));
+            }
+
             scene.remove(state.selectedObject);
             const index = state.placedObjects.indexOf(state.selectedObject);
             if (index > -1) state.placedObjects.splice(index, 1);
@@ -88,6 +134,7 @@ window.addEventListener('keydown', (event) => {
             updateCraneButton();
         }
     }
+
 
     if (event.key === 'r' || event.key === 'R') {
         if (state.selectedObject) {
@@ -185,3 +232,5 @@ loadModels(() => {
 selectTool('crane');
 startAnimationLoop();
 startAutoSave(30000);  // 每 30 秒自动保存
+
+setInterval(checkSafety, 500);
