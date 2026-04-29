@@ -23,6 +23,15 @@ import {
 
 import { checkSafety } from './safety-tools.js';
 
+import { downloadThreeViews } from './export.js';
+
+import { generateReport } from './export.js';
+
+import { loadFormFromLocalStorage, saveFormToLocalStorage } from './export.js';
+
+
+import { exportProjectJSON, importProjectJSON } from './export.js';
+
 
 
 // ============= 鼠标移动 =============
@@ -223,6 +232,51 @@ document.getElementById('load-btn').addEventListener('click', () => {
         console.error(e);
     }
 });
+
+// ============= 截图 =============
+document.getElementById('screenshot-btn').addEventListener('click', async () => {
+    await downloadThreeViews();
+});
+
+// ============= 报告 =============
+document.getElementById('report-btn').addEventListener('click', () => {
+    document.getElementById('report-modal').classList.remove('hidden');
+});
+
+document.getElementById('rf-cancel').addEventListener('click', () => {
+    document.getElementById('report-modal').classList.add('hidden');
+});
+
+document.getElementById('rf-generate').addEventListener('click', async () => {
+    document.getElementById('report-modal').classList.add('hidden');
+    await generateReport();
+});
+
+
+// 打开表单时加载之前的数据
+document.getElementById('report-btn').addEventListener('click', () => {
+    document.getElementById('report-modal').classList.remove('hidden');
+    loadFormFromLocalStorage();
+});
+
+// "一時保存"按钮
+document.getElementById('rf-save').addEventListener('click', () => {
+    saveFormToLocalStorage();
+    alert('✅ 入力内容を一時保存しました');
+});
+
+
+document.getElementById('export-json-btn').addEventListener('click', exportProjectJSON);
+
+document.getElementById('import-json-btn').addEventListener('click', () => {
+    document.getElementById('import-file').click();
+});
+
+document.getElementById('import-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) importProjectJSON(file);
+});
+
 
 // ============= 启动 =============
 loadModels(() => {

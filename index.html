@@ -120,6 +120,10 @@
             <span class="text-2xl">📏</span>
             <span>測定</span>
         </button>
+
+        <button id="screenshot-btn" class="fixed top-[20px] right-[200px] px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg z-50">
+            📷 3視図出力
+        </button>
     </div>
 
     <div id="loading" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 text-white text-2xl">
@@ -192,6 +196,162 @@
             <div id="safety-path">通路重複: <span class="text-slate-400">- なし</span></div>
         </div>
     </div>
+
+
+    <button id="export-json-btn" class="fixed top-[20px] right-[600px] px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg z-50">
+        💾 エクスポート
+    </button>
+    <input type="file" id="import-file" accept=".json" hidden>
+    <button id="import-json-btn" class="fixed top-[20px] right-[750px] px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg z-50">
+        📂 インポート
+    </button>
+
+
+
+
+
+
+
+    <!-- 触发按钮 -->
+<button id="report-btn" class="fixed top-[20px] right-[400px] px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg z-50">
+    📋 計画書作成
+</button>
+
+<!-- 表单弹窗 -->
+<div id="report-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-2xl w-[700px] max-h-[90vh] overflow-y-auto p-6">
+        <h2 class="text-2xl font-bold mb-4">📋 移動式クレーン作業計画書</h2>
+        
+        <!-- 基本信息 -->
+        <fieldset class="border p-3 mb-3">
+            <legend class="text-sm font-bold px-2">基本情報</legend>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm">現場名</label>
+                    <input id="rf-site" class="w-full border p-1 text-sm" placeholder="〇〇現場">
+                </div>
+                <div>
+                    <label class="text-sm">所属</label>
+                    <input id="rf-company" class="w-full border p-1 text-sm" placeholder="〇〇建設">
+                </div>
+                <div>
+                    <label class="text-sm">工事番号</label>
+                    <input id="rf-projectNo" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">作業日</label>
+                    <input id="rf-date" type="date" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">天候</label>
+                    <select id="rf-weather" class="w-full border p-1 text-sm">
+                        <option>晴れ</option>
+                        <option>曇り</option>
+                        <option>雨</option>
+                        <option>雪</option>
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+        
+        <!-- クレーン情报 -->
+        <fieldset class="border p-3 mb-3">
+            <legend class="text-sm font-bold px-2">クレーン情報</legend>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm">機種</label>
+                    <input id="rf-craneModel" class="w-full border p-1 text-sm" value="TADANO GR-250N">
+                </div>
+                <div>
+                    <label class="text-sm">車両番号</label>
+                    <input id="rf-vehicleNo" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">最大荷重 (t)</label>
+                    <input id="rf-maxLoad" type="number" class="w-full border p-1 text-sm" value="25">
+                </div>
+                <div>
+                    <label class="text-sm">作業半径 (m)</label>
+                    <input id="rf-radius" type="number" class="w-full border p-1 text-sm" value="10">
+                </div>
+            </div>
+        </fieldset>
+        
+        <!-- 人员 -->
+        <fieldset class="border p-3 mb-3">
+            <legend class="text-sm font-bold px-2">人員</legend>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm">運転者</label>
+                    <input id="rf-operator" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">玉掛者</label>
+                    <input id="rf-rigger" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">合図者</label>
+                    <input id="rf-signaler" class="w-full border p-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-sm">誘導員</label>
+                    <input id="rf-guide" class="w-full border p-1 text-sm">
+                </div>
+            </div>
+        </fieldset>
+        
+        <!-- 作業内容 -->
+        <fieldset class="border p-3 mb-3">
+            <legend class="text-sm font-bold px-2">作業内容</legend>
+            <div class="space-y-2">
+                <div>
+                    <label class="text-sm">午前作業</label>
+                    <textarea id="rf-morning" class="w-full border p-1 text-sm" rows="2"></textarea>
+                </div>
+                <div>
+                    <label class="text-sm">午後作業</label>
+                    <textarea id="rf-afternoon" class="w-full border p-1 text-sm" rows="2"></textarea>
+                </div>
+                <div>
+                    <label class="text-sm">主要吊荷</label>
+                    <input id="rf-mainLoad" class="w-full border p-1 text-sm" placeholder="例: 鉄骨 H型鋼 5t">
+                </div>
+            </div>
+        </fieldset>
+        
+        <!-- 安全条件 -->
+        <fieldset class="border p-3 mb-3">
+            <legend class="text-sm font-bold px-2">安全条件</legend>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-sm">風速中止基準 (m/s)</label>
+                    <input id="rf-windLimit" type="number" class="w-full border p-1 text-sm" value="10">
+                </div>
+                <div>
+                    <label class="text-sm">雨量中止基準 (mm/h)</label>
+                    <input id="rf-rainLimit" type="number" class="w-full border p-1 text-sm" value="10">
+                </div>
+            </div>
+            <div class="mt-2">
+                <label class="text-sm">特記事項</label>
+                <textarea id="rf-notes" class="w-full border p-1 text-sm" rows="2"></textarea>
+            </div>
+        </fieldset>
+        
+        <!-- 按钮 -->
+        <div class="flex gap-2 justify-end mt-4">
+            <button id="rf-cancel" class="px-4 py-2 bg-gray-400 text-white rounded">
+                キャンセル
+            </button>
+            <button id="rf-save" class="px-4 py-2 bg-blue-600 text-white rounded">
+                💾 一時保存
+            </button>
+            <button id="rf-generate" class="px-4 py-2 bg-orange-600 text-white rounded">
+                📋 PDF 生成
+            </button>
+        </div>
+    </div>
+</div>
 
 
 <script type="importmap">
