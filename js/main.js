@@ -127,6 +127,10 @@ window.addEventListener('keydown', (event) => {
                 state.selectedObject.userData.arrows.forEach(a => scene.remove(a));
             }
 
+            if (state.selectedObject.userData.centerMarker) {  // ⭐ 新增
+            scene.remove(state.selectedObject.userData.centerMarker);
+            }
+
             if (state.selectedObject.userData.label) {
                 scene.remove(state.selectedObject.userData.label);
             }
@@ -276,6 +280,19 @@ document.getElementById('import-file').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) importProjectJSON(file);
 });
+
+
+document.getElementById('toggle-center-btn').addEventListener('click', () => {
+    state.showCenterPoints = !state.showCenterPoints;
+    
+    // 更新所有中心点的显示状态
+    state.placedObjects.forEach(obj => {
+        if (obj.userData.centerMarker) {
+            obj.userData.centerMarker.visible = state.showCenterPoints;
+        }
+    });
+});
+
 
 
 // ============= 启动 =============

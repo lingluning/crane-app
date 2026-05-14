@@ -67,7 +67,10 @@ export function finishForbiddenZone() {
     };
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
     geometry.rotateX(Math.PI / 2);   // 平躺
-    geometry.translate(0, 0.05, 0);  // 略高于地面
+
+    // 跟随地面高度（用点击点的平均 Y），略高一点避免 z-fighting
+    const avgY = state.drawingPoints.reduce((s, p) => s + p.y, 0) / state.drawingPoints.length;
+    geometry.translate(0, avgY + 0.05, 0);
     
     // 半透明红色
     const material = new THREE.MeshBasicMaterial({

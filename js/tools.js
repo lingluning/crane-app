@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { scene, raycaster, models } from './scene.js';
+import { scene, raycaster, models, applyToonStyle } from './scene.js';
 import { state } from './state.js';
+import { getCrane } from './crane-database.js';
+
 
 // ============= 工具切换 =============
 export function selectTool(toolName) {
@@ -79,15 +81,23 @@ export function updateGhost() {
 }
 
 // ============= 放置函数 =============
+
 export function placeCrane(point) {
     const existingCrane = state.placedObjects.find(o => o.userData.type === 'crane');
     if (existingCrane) {
-        alert('⚠️ クレーンは 1 台のみ配置可能です\n既存のクレーンを削除してから配置してください');
+        alert('⚠️ クレーンは 1 台のみ配置可能です');
         return;
     }
 
     if (!models.craneTemplate) {
         console.log('吊车模型还没加载完，请稍等');
+        return;
+    }
+    
+    // 获取吊车数据
+    const craneData = getCrane(state.currentCraneId);
+    if (!craneData) {
+        alert('吊车数据不存在');
         return;
     }
     
@@ -102,32 +112,94 @@ export function placeCrane(point) {
         }
     });
 
-    crane.userData = { type: 'crane' };
+    // ⭐ userData 包含完整信息
+    crane.userData = {
+        type: 'crane',
+        craneId: state.currentCraneId,
+        craneData: craneData,
+        workRadius: 10,
+        outriggerMode: 'max',  // 默认全張出
+        centerOffset: craneData.centerPoint
+    };
+    
     scene.add(crane);
     state.placedObjects.push(crane);
-    updateCounters();
-
-    // 作业半径圆
-    const radiusGeom = new THREE.RingGeometry(10, 12, 64);
-    const radiusMat = new THREE.MeshBasicMaterial({
-        color: 0xff0000,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.5
-    });
-    const radiusCircle = new THREE.Mesh(radiusGeom, radiusMat);
-    radiusCircle.rotation.x = -Math.PI / 2;
-    radiusCircle.position.copy(point);
-    radiusCircle.position.y += 0.05;
+    
+    // ⭐ 加中心点标记
+    const centerMarker = createCenterMarker(point);
+    scene.add(centerMarker);
+    crane.userData.centerMarker = centerMarker;
+    
+    // 半径圆（基于中心点）
+    const radiusCircle = createTerrainFollowingCircle(point, 10);
     scene.add(radiusCircle);
-    
     crane.userData.radiusCircle = radiusCircle;
-
-    document.getElementById('crane-info').classList.remove('hidden');
-    const count = state.placedObjects.filter(o => o.userData.type === 'crane').length;
-    document.getElementById('info-count').textContent = count;
     
+    updateCounters();
+    document.getElementById('crane-info').classList.remove('hidden');
     updateCraneButton();
+}
+
+// ⭐ 新函数：中心点标记
+function createCenterMarker(position) {
+    const group = new THREE.Group();
+    
+    // 红色十字（2 条线）—— 关掉深度测试，避免被吊车实体遮住
+    const lineMat = new THREE.LineBasicMaterial({
+        color: 0xff0000,
+        linewidth: 2,
+        depthTest: false,
+        transparent: true
+    });
+
+    const size = 0.5;
+
+    // X 方向线
+    const xGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-size, 0, 0),
+        new THREE.Vector3(size, 0, 0)
+    ]);
+    const xLine = new THREE.Line(xGeom, lineMat);
+    xLine.renderOrder = 999;
+    group.add(xLine);
+
+    // Z 方向线
+    const zGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, -size),
+        new THREE.Vector3(0, 0, size)
+    ]);
+    const zLine = new THREE.Line(zGeom, lineMat);
+    zLine.renderOrder = 999;
+    group.add(zLine);
+
+    // 中心圆点
+    const sphereGeom = new THREE.SphereGeometry(0.1);
+    const sphereMat = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        depthTest: false,
+        transparent: true
+    });
+    const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+    sphere.renderOrder = 999;
+    group.add(sphere);
+    
+    // 放在地面上
+    group.position.copy(position);
+    group.position.y += 0.1;
+    
+    group.visible = state.showCenterPoints;
+    
+    return group;
+}
+
+// ⭐ 计算吊车的世界坐标中心
+export function getCraneCenter(crane) {
+    const offset = crane.userData.centerOffset || { offsetX: 0, offsetZ: 0 };
+    return new THREE.Vector3(
+        crane.position.x + offset.offsetX,
+        crane.position.y,
+        crane.position.z + offset.offsetZ
+    );
 }
 
 export function placeLoad(point) {
@@ -139,6 +211,7 @@ export function placeLoad(point) {
     load.position.y += 0.5;
     load.castShadow = true;
     load.userData = { type: 'load' };
+    applyToonStyle(load);
     scene.add(load);
     state.placedObjects.push(load);
     updateCounters();
@@ -146,7 +219,7 @@ export function placeLoad(point) {
 
 export function placePlate(point) {
     const { x: sx, z: sz } = state.currentPlateSize;
-    
+
     const plate = new THREE.Mesh(
         new THREE.BoxGeometry(sx, 0.1, sz),
         new THREE.MeshStandardMaterial({ color: 0xffd700 })
@@ -155,9 +228,10 @@ export function placePlate(point) {
     plate.position.x = snapToGrid(plate.position.x);
     plate.position.z = snapToGrid(plate.position.z);
     plate.position.y += 0.05;
-    
+
     plate.receiveShadow = true;
     plate.userData = { type: 'plate', size: { x: sx, z: sz } };
+    applyToonStyle(plate);
     scene.add(plate);
     state.placedObjects.push(plate);
     updateCounters();
