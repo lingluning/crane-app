@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { scene } from './scene.js';
 import { state } from './state.js';
-import { 
-    placeCrane, placeLoad, placePlate, 
-    updateCraneRadius, updateCounters, updateCraneButton 
+import {
+    placeCrane, placeLoadPick, placeLoadDrop, placePlate,
+    updateCraneRadius, updateCounters, updateCraneButton
 } from './tools.js';
 
 // ============= 序列化 =============
@@ -57,11 +57,20 @@ export function deserialize(data) {
                 }
                 break;
                 
-            case 'load':
-                placeLoad(point);
-                const lastLoad = state.placedObjects[state.placedObjects.length - 1];
-                if (lastLoad) {
-                    lastLoad.rotation.y = item.rotation || 0;
+            case 'loadPick':
+            case 'load':   // 老存档兼容：默认当作起吊点
+                placeLoadPick(point);
+                {
+                    const last = state.placedObjects[state.placedObjects.length - 1];
+                    if (last) last.rotation.y = item.rotation || 0;
+                }
+                break;
+
+            case 'loadDrop':
+                placeLoadDrop(point);
+                {
+                    const last = state.placedObjects[state.placedObjects.length - 1];
+                    if (last) last.rotation.y = item.rotation || 0;
                 }
                 break;
                 

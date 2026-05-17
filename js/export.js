@@ -392,6 +392,11 @@ export async function generateReport() {
                 </div>
             </div>
         </div>
+
+        <div style="margin-top: 8px; padding: 6px; background: #ffeeee; border: 1px solid #c00; font-size: 9px;">
+    ⚠️          注意：本書類の負荷率データは参考用です。
+                実際の作業前に、必ず実機の負荷率表で確認してください。
+        </div>
     </div>
     
     <script>

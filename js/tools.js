@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { scene, raycaster, models, applyToonStyle } from './scene.js';
 import { state } from './state.js';
 import { getCrane } from './crane-database.js';
+import { CSS2DObject } from './scene.js';
 
 
 // ============= 工具切换 =============
@@ -58,12 +59,22 @@ export function updateGhost() {
                 color: 0xffc800, transparent: true, opacity: 0.5 
             });
             break;
-        case 'load':
+
+        case 'loadPick':  // ⭐ 新
             geometry = new THREE.BoxGeometry(1, 1, 1);
             material = new THREE.MeshStandardMaterial({ 
-                color: 0x8b6f47, transparent: true, opacity: 0.5 
+                color: 0x00aa00, transparent: true, opacity: 0.5 
             });
             break;
+
+        case 'loadDrop':  // ⭐ 新
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+            material = new THREE.MeshStandardMaterial({ 
+                color: 0xcc0000, transparent: true, opacity: 0.5 
+            });
+            break;
+
+
         case 'plate':
             geometry = new THREE.BoxGeometry(
                 state.currentPlateSize.x, 0.1, state.currentPlateSize.z
@@ -202,20 +213,69 @@ export function getCraneCenter(crane) {
     );
 }
 
-export function placeLoad(point) {
+// 起吊位置（绿色）
+export function placeLoadPick(point) {
     const load = new THREE.Mesh(
         new THREE.BoxGeometry(1, 1, 1),
-        new THREE.MeshStandardMaterial({ color: 0x8b6f47 })
+        new THREE.MeshStandardMaterial({ color: 0x00aa00 })  // 绿色
     );
     load.position.copy(point);
     load.position.y += 0.5;
     load.castShadow = true;
-    load.userData = { type: 'load' };
-    applyToonStyle(load);
+    load.userData = { 
+        type: 'loadPick',
+        label: '起吊'
+    };
     scene.add(load);
     state.placedObjects.push(load);
+    
+    // 加文字标签
+    addLoadLabel(load, '🟢 起吊');
+    
     updateCounters();
 }
+
+// 卸荷位置（红色）
+export function placeLoadDrop(point) {
+    const load = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0xcc0000 })  // 红色
+    );
+    load.position.copy(point);
+    load.position.y += 0.5;
+    load.castShadow = true;
+    load.userData = { 
+        type: 'loadDrop',
+        label: '卸荷'
+    };
+    scene.add(load);
+    state.placedObjects.push(load);
+    
+    addLoadLabel(load, '🔴 卸荷');
+    
+    updateCounters();
+}
+
+// 加文字标签（用之前的 CSS2DObject）
+function addLoadLabel(loadObj, text) {
+    const labelDiv = document.createElement('div');
+    labelDiv.style.background = 'rgba(0, 0, 0, 0.7)';
+    labelDiv.style.color = 'white';
+    labelDiv.style.padding = '2px 8px';
+    labelDiv.style.borderRadius = '4px';
+    labelDiv.style.fontSize = '12px';
+    labelDiv.style.fontWeight = 'bold';
+    labelDiv.style.pointerEvents = 'none';
+    labelDiv.textContent = text;
+    
+    const label = new CSS2DObject(labelDiv);
+    label.position.set(0, 1.2, 0);  // 在方块上方
+    loadObj.add(label);
+    loadObj.userData.textLabel = label;
+}
+
+
+
 
 export function placePlate(point) {
     const { x: sx, z: sz } = state.currentPlateSize;
@@ -332,20 +392,14 @@ export function showInfo(obj) {
 }
 
 export function updateCounters() {
-    const cranes = state.placedObjects.filter(o => o.userData.type === 'crane');
-    const loads = state.placedObjects.filter(o => o.userData.type === 'load');
-    const plates = state.placedObjects.filter(o => o.userData.type === 'plate');
-    const forbidden = state.placedObjects.filter(o => o.userData.type === 'forbidden');
-    const paths = state.placedObjects.filter(o => o.userData.type === 'path');
-    const measures = state.placedObjects.filter(o => o.userData.type === 'measure');
-
-    
-    document.getElementById('count-crane').textContent = cranes.length;
-    document.getElementById('count-load').textContent = loads.length;
-    document.getElementById('count-plate').textContent = plates.length;
-    document.getElementById('count-forbidden').textContent = forbidden.length;
-    document.getElementById('count-path').textContent = paths.length;
+    const types = ['crane', 'loadPick', 'loadDrop', 'plate', 'forbidden', 'path'];
+    types.forEach(type => {
+        const count = state.placedObjects.filter(o => o.userData.type === type).length;
+        const el = document.getElementById(`count-${type}`);
+        if (el) el.textContent = count;
+    });
 }
+
 
 export function updateCraneButton() {
     const btn = document.querySelector('[data-tool="crane"]');
@@ -364,24 +418,52 @@ export function updateCraneRadius(crane, radiusMeters) {
     if (crane.userData.radiusCircle) {
         scene.remove(crane.userData.radiusCircle);
     }
-    
-    const radiusGeom = new THREE.RingGeometry(
-        radiusMeters - 0.15, radiusMeters + 0.15, 64
-    );
-    const radiusMat = new THREE.MeshBasicMaterial({
-        color: 0xff0000,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.5
-    });
-    const newCircle = new THREE.Mesh(radiusGeom, radiusMat);
-    newCircle.rotation.x = -Math.PI / 2;
-    newCircle.position.copy(crane.position);
-    newCircle.position.y += 0.05;
+
+    const newCircle = createTerrainFollowingCircle(crane.position, radiusMeters);
     scene.add(newCircle);
-    
+
     crane.userData.radiusCircle = newCircle;
     crane.userData.workRadius = radiusMeters;
+}
+
+// 绕中心采样一圈点，每点向下射线打地形拿到真实 Y，
+// 连成一个细圆管，作业半径圆就会贴着地形起伏
+export function createTerrainFollowingCircle(center, radiusMeters, segments = 96) {
+    const siteMeshes = [];
+    if (models.siteModel) {
+        models.siteModel.traverse(c => { if (c.isMesh) siteMeshes.push(c); });
+    }
+
+    const localRay = new THREE.Raycaster();
+    const down = new THREE.Vector3(0, -1, 0);
+    const points = [];
+
+    for (let i = 0; i < segments; i++) {
+        const a = (i / segments) * Math.PI * 2;
+        const x = center.x + Math.cos(a) * radiusMeters;
+        const z = center.z + Math.sin(a) * radiusMeters;
+
+        let y = center.y;
+        if (siteMeshes.length > 0) {
+            localRay.set(new THREE.Vector3(x, 500, z), down);
+            const hits = localRay.intersectObjects(siteMeshes, true);
+            if (hits.length > 0) y = hits[0].point.y;
+        }
+        points.push(new THREE.Vector3(x, y + 0.06, z));   // 略抬一点防 z-fighting
+    }
+
+    const curve = new THREE.CatmullRomCurve3(points, true);   // closed
+    const tubeGeom = new THREE.TubeGeometry(curve, segments * 2, 0.12, 8, true);
+    const mat = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        depthTest: true
+    });
+    const tube = new THREE.Mesh(tubeGeom, mat);
+    tube.userData.isRadiusCircle = true;
+    return tube;
 }
 
 // ============= 工具函数 =============

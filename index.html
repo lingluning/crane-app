@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>Three.js Test</title>
+    <title>Crane Planning App</title>
     <style>
         .tool-btn {
             transition: all 0.15s;
@@ -17,6 +17,7 @@
             box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
             border: 2px solid #60a5fa;
         }
+
         .plate-size-btn {
             padding: 4px 12px;
             background: #475569;
@@ -37,338 +38,329 @@
             font-weight: bold;
         }
 
+        .outrigger-btn.active {
+            background: #3b82f6;
+            border: 1px solid #60a5fa;
+        }
+
+        .top-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            color: white;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+
+        .top-btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.1);
+        }
+
+        /* 右侧 sidebar 自定义滚动条 */
+        #right-sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #right-sidebar::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 3px;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.92);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
     </style>
-    
 
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body>
+<body class="overflow-hidden">
 
-    <!-- 替换之前的简陋 UI -->
-    <div id="coord-display"
-        class="fixed bottom-5 right-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg font-mono text-sm">
-        座標: -
+    <!-- ============= 顶部 中央 工具条 ============= -->
+    <div id="top-toolbar"
+        class="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 px-3 py-2 rounded-xl flex flex-wrap gap-2 z-50 shadow-lg">
+        <button id="undo-btn" class="top-btn bg-slate-700 hover:bg-slate-600">↶ 元に戻す</button>
+        <span class="w-px bg-slate-600 mx-1"></span>
+        <button id="save-btn" class="top-btn bg-green-600 hover:bg-green-700">💾 保存</button>
+        <button id="load-btn" class="top-btn bg-blue-600 hover:bg-blue-700">📂 読込</button>
+        <button id="export-json-btn" class="top-btn bg-cyan-600 hover:bg-cyan-700">📤 エクスポート</button>
+        <button id="import-json-btn" class="top-btn bg-cyan-700 hover:bg-cyan-800">📥 インポート</button>
+        <span class="w-px bg-slate-600 mx-1"></span>
+        <button id="screenshot-btn" class="top-btn bg-purple-600 hover:bg-purple-700">📷 3視図出力</button>
+        <button id="report-btn" class="top-btn bg-orange-600 hover:bg-orange-700">📋 計画書作成</button>
+        <span class="w-px bg-slate-600 mx-1"></span>
+        <button id="toggle-center-btn" class="top-btn bg-slate-700 hover:bg-slate-600">⊕ 中心点表示</button>
     </div>
 
-    <div id="drawing-hint" class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-6 py-3 rounded-lg hidden z-50">
-        <span id="hint-text">操作提示</span>
+    <input type="file" id="import-file" accept=".json" hidden>
+
+    <!-- ============= 左侧 工具栏 + 敷板选项 ============= -->
+    <div class="fixed top-24 left-4 flex items-start gap-2 z-50">
+        <div id="tool-palette" class="bg-slate-900/90 p-2 rounded-xl flex flex-col gap-2 shadow-lg">
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="select">
+                <span class="text-2xl">👆</span><span>選択</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="crane">
+                <span class="text-2xl">🏗️</span><span>クレーン</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="loadPick">
+                <span class="text-2xl">🟢</span><span>起吊</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="loadDrop">
+                <span class="text-2xl">🔴</span><span>卸荷</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="plate">
+                <span class="text-2xl">🟨</span><span>敷鉄板</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="forbidden">
+                <span class="text-2xl">🚫</span><span>禁止区</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="path">
+                <span class="text-2xl">🟢</span><span>通路</span>
+            </button>
+            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="measure">
+                <span class="text-2xl">📏</span><span>測定</span>
+            </button>
+        </div>
+
+        <!-- 敷板尺寸（plate 工具激活时显示） -->
+        <div id="plate-options" class="panel hidden">
+            <div class="text-sm font-bold mb-2">敷鉄板サイズ</div>
+            <div class="flex gap-2">
+                <button class="plate-size-btn active" data-size="1.5x3">1.5×3</button>
+                <button class="plate-size-btn" data-size="2x4">2×4</button>
+                <button class="plate-size-btn" data-size="1x2">1×2</button>
+            </div>
+        </div>
     </div>
 
+    <!-- ============= 右侧 信息 Sidebar ============= -->
+    <div id="right-sidebar"
+        class="fixed top-24 right-4 bottom-24 w-72 flex flex-col gap-3 overflow-y-auto z-40 pr-1">
 
-    <div id="counter" class="fixed bottom-5 left-5 bg-slate-900/80 text-white px-4 py-2 rounded-lg space-y-1 text-sm">
+        <!-- 安全状态 -->
+        <div id="safety-panel" class="panel">
+            <div class="font-bold mb-2">🛡️ 安全状態</div>
+            <div class="text-sm space-y-1">
+                <div id="safety-radius">作業半径: <span class="text-green-400">✅ OK</span></div>
+                <div id="safety-load">吊荷位置: <span class="text-slate-400">- なし</span></div>
+                <div id="safety-path">通路重複: <span class="text-slate-400">- なし</span></div>
+            </div>
+        </div>
+
+        <!-- 距离信息 -->
+        <div id="distance-panel" class="panel hidden">
+            <div class="font-bold mb-2">📏 距離情報</div>
+            <div class="text-sm space-y-1">
+                <div>🟢 起吊位置:</div>
+                <div id="dist-pick" class="ml-3 text-green-400 font-mono">- m</div>
+                <div>🔴 卸荷位置:</div>
+                <div id="dist-drop" class="ml-3 text-red-400 font-mono">- m</div>
+            </div>
+        </div>
+
+        <!-- 吊荷信息 -->
+        <div id="load-panel" class="panel hidden">
+            <div class="font-bold mb-2">⚖️ 吊荷情報</div>
+
+            <div class="text-sm">
+                <label>実際吊重 (t)</label>
+                <input id="actual-load-input" type="number"
+                    class="w-full bg-slate-700 text-white px-2 py-1 rounded mt-1"
+                    step="0.5" min="0.1" max="100" value="5">
+            </div>
+
+            <div class="text-sm mt-3">
+                <div>📋 アウトリガー</div>
+                <div class="flex gap-1 mt-1">
+                    <button class="outrigger-btn flex-1 bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs" data-mode="min">最小</button>
+                    <button class="outrigger-btn flex-1 bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs" data-mode="mid">中間</button>
+                    <button class="outrigger-btn flex-1 bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-xs active" data-mode="max">全張出</button>
+                </div>
+            </div>
+
+            <div class="text-sm mt-3 border-t border-slate-700 pt-2">
+                <div>最大吊重（起吊点）:</div>
+                <div id="max-load-pick" class="ml-3 font-mono">- t</div>
+                <div class="mt-1">使用率:</div>
+                <div id="usage-pick" class="ml-3 font-mono font-bold">- %</div>
+            </div>
+        </div>
+
+        <!-- 吊车控制 -->
+        <div id="crane-control" class="panel hidden">
+            <div class="font-bold mb-3">🏗️ クレーン制御</div>
+
+            <label class="text-sm">
+                作業半径: <span id="radius-value" class="font-bold text-yellow-400">10.0</span> m
+            </label>
+            <input type="range" id="radius-slider"
+                min="5" max="15" step="0.5" value="10"
+                class="w-full mb-3">
+
+            <label class="text-sm">
+                旋回角度: <span id="rotation-value" class="font-bold text-yellow-400">0</span>°
+            </label>
+            <input type="range" id="rotation-slider"
+                min="0" max="360" step="15" value="0"
+                class="w-full">
+
+            <div class="text-xs text-slate-400 mt-2">
+                💡 R キーでも旋回できます
+            </div>
+        </div>
+
+        <!-- 吊车信息 -->
+        <div id="crane-info" class="panel hidden">
+            <div class="font-bold mb-2">🏗️ クレーン情報</div>
+            <div class="text-sm">型式: TADANO GR-250N</div>
+            <div class="text-sm">作業半径: 7.0 m</div>
+            <div class="text-sm">配置数: <span id="info-count">0</span></div>
+        </div>
+
+        <!-- 选中对象信息 -->
+        <div id="info-panel" class="panel hidden">
+            <div class="font-bold mb-2">選択中</div>
+            <div id="info-content" class="text-sm"></div>
+        </div>
+    </div>
+
+    <!-- ============= 底部 计数器 ============= -->
+    <div id="counter" class="panel fixed bottom-4 left-4 text-sm space-y-1 z-40">
         <div>🏗️ クレーン: <span id="count-crane" class="font-bold text-yellow-400">0</span></div>
-        <div>📦 吊荷: <span id="count-load" class="font-bold text-orange-400">0</span></div>
+        <div>🟢 起吊: <span id="count-loadPick" class="font-bold text-green-400">0</span></div>
+        <div>🔴 卸荷: <span id="count-loadDrop" class="font-bold text-red-400">0</span></div>
         <div>🟨 敷鉄板: <span id="count-plate" class="font-bold text-yellow-200">0</span></div>
         <div>🚫 禁止区: <span id="count-forbidden" class="font-bold text-red-400">0</span></div>
         <div>🟢 通路: <span id="count-path" class="font-bold text-green-400">0</span></div>
     </div>
 
-    <button id="undo-btn" class="fixed top-[20px] right-[40px] px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg">
-        ↶ 元に戻す
-    </button>
-
-    <!-- 顶部加工具栏 -->
-
-
-    <div id="tool-palette" class="fixed top-5 left-5 bg-slate-900/90 p-2 rounded-lg flex flex-col gap-2 z-50">
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="select">
-            <span class="text-2xl">👆</span>
-            <span>選択</span>
-        </button>
-
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="crane">
-            <span class="text-2xl">🏗️</span>
-            <span>クレーン</span>
-        </button>
-
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="load">
-            <span class="text-2xl">📦</span>
-            <span>吊荷</span>
-        </button>
-
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="plate">
-            <span class="text-2xl">🟨</span>
-            <span>敷鉄板</span>
-        </button>
-
-        <button 
-        class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="forbidden">
-            <span class="text-2xl">🚫</span>
-            <span>禁止区</span>
-        </button>
-
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="path">
-            <span class="text-2xl">🟢</span>
-            <span>通路</span>
-        </button>
-
-        <button
-            class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs"
-            data-tool="measure">
-            <span class="text-2xl">📏</span>
-            <span>測定</span>
-        </button>
-
-        <button id="screenshot-btn" class="fixed top-[20px] right-[200px] px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg z-50">
-            📷 3視図出力
-        </button>
+    <!-- ============= 底部 座标 ============= -->
+    <div id="coord-display"
+        class="fixed bottom-4 right-4 bg-slate-900/80 text-white px-4 py-2 rounded-lg font-mono text-sm z-40">
+        座標: -
     </div>
 
-    <div id="loading" class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 text-white text-2xl">
-            🏗️ 読み込み中...
+    <!-- ============= 底部 中央 提示 ============= -->
+    <div id="drawing-hint"
+        class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-6 py-3 rounded-lg hidden z-50">
+        <span id="hint-text">操作提示</span>
     </div>
 
-
-
-
-
-    <div id="info-panel" class="fixed top-5 right-20 bg-slate-900/80 text-white p-4 rounded-lg w-64 hidden">
-        <h3 class="font-bold mb-2">選択中</h3>
-        <div id="info-content"></div>
+    <!-- ============= 加载中 ============= -->
+    <div id="loading"
+        class="fixed inset-0 bg-black/80 flex items-center justify-center z-[200] text-white text-2xl">
+        🏗️ 読み込み中...
     </div>
 
-    <div id="crane-info" class="fixed bottom-20 right-5 bg-slate-900/80 text-white p-4 rounded-lg hidden">
-        <div class="font-bold mb-2">🏗️ クレーン情報</div>
-        <div>型式: TADANO GR-250N</div>
-        <div>作業半径: 7.0 m</div>
-        <div>配置数: <span id="info-count">0</span></div>
-    </div>
+    <!-- ============= 计划书 Modal ============= -->
+    <div id="report-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-2xl w-[700px] max-h-[90vh] overflow-y-auto p-6">
+            <h2 class="text-2xl font-bold mb-4">📋 移動式クレーン作業計画書</h2>
 
-    <div id="crane-control" class="fixed bottom-60 right-5 bg-slate-900/90 text-white p-4 rounded-lg w-72 hidden">
-        <div class="font-bold mb-3">🏗️ クレーン制御</div>
-        
-        <label class="text-sm">
-            作業半径: <span id="radius-value" class="font-bold text-yellow-400">10.0</span> m
-        </label>
-        <input type="range" id="radius-slider" 
-            min="5" max="15" step="0.5" value="10" 
-            class="w-full mb-3">
-        
-        <label class="text-sm">
-            旋回角度: <span id="rotation-value" class="font-bold text-yellow-400">0</span>°
-        </label>
-        <input type="range" id="rotation-slider" 
-            min="0" max="360" step="15" value="0" 
-            class="w-full">
-        
-        <div class="text-xs text-slate-400 mt-2">
-            💡 R キーでも旋回できます
+            <fieldset class="border p-3 mb-3">
+                <legend class="text-sm font-bold px-2">基本情報</legend>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-sm">現場名</label>
+                        <input id="rf-site" class="w-full border p-1 text-sm" placeholder="〇〇現場"></div>
+                    <div><label class="text-sm">所属</label>
+                        <input id="rf-company" class="w-full border p-1 text-sm" placeholder="〇〇建設"></div>
+                    <div><label class="text-sm">工事番号</label>
+                        <input id="rf-projectNo" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">作業日</label>
+                        <input id="rf-date" type="date" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">天候</label>
+                        <select id="rf-weather" class="w-full border p-1 text-sm">
+                            <option>晴れ</option>
+                            <option>曇り</option>
+                            <option>雨</option>
+                            <option>雪</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="border p-3 mb-3">
+                <legend class="text-sm font-bold px-2">クレーン情報</legend>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-sm">機種</label>
+                        <input id="rf-craneModel" class="w-full border p-1 text-sm" value="TADANO GR-250N"></div>
+                    <div><label class="text-sm">車両番号</label>
+                        <input id="rf-vehicleNo" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">最大荷重 (t)</label>
+                        <input id="rf-maxLoad" type="number" class="w-full border p-1 text-sm" value="25"></div>
+                    <div><label class="text-sm">作業半径 (m)</label>
+                        <input id="rf-radius" type="number" class="w-full border p-1 text-sm" value="10"></div>
+                </div>
+            </fieldset>
+
+            <fieldset class="border p-3 mb-3">
+                <legend class="text-sm font-bold px-2">人員</legend>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-sm">運転者</label>
+                        <input id="rf-operator" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">玉掛者</label>
+                        <input id="rf-rigger" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">合図者</label>
+                        <input id="rf-signaler" class="w-full border p-1 text-sm"></div>
+                    <div><label class="text-sm">誘導員</label>
+                        <input id="rf-guide" class="w-full border p-1 text-sm"></div>
+                </div>
+            </fieldset>
+
+            <fieldset class="border p-3 mb-3">
+                <legend class="text-sm font-bold px-2">作業内容</legend>
+                <div class="space-y-2">
+                    <div><label class="text-sm">午前作業</label>
+                        <textarea id="rf-morning" class="w-full border p-1 text-sm" rows="2"></textarea></div>
+                    <div><label class="text-sm">午後作業</label>
+                        <textarea id="rf-afternoon" class="w-full border p-1 text-sm" rows="2"></textarea></div>
+                    <div><label class="text-sm">主要吊荷</label>
+                        <input id="rf-mainLoad" class="w-full border p-1 text-sm" placeholder="例: 鉄骨 H型鋼 5t"></div>
+                </div>
+            </fieldset>
+
+            <fieldset class="border p-3 mb-3">
+                <legend class="text-sm font-bold px-2">安全条件</legend>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-sm">風速中止基準 (m/s)</label>
+                        <input id="rf-windLimit" type="number" class="w-full border p-1 text-sm" value="10"></div>
+                    <div><label class="text-sm">雨量中止基準 (mm/h)</label>
+                        <input id="rf-rainLimit" type="number" class="w-full border p-1 text-sm" value="10"></div>
+                </div>
+                <div class="mt-2">
+                    <label class="text-sm">特記事項</label>
+                    <textarea id="rf-notes" class="w-full border p-1 text-sm" rows="2"></textarea>
+                </div>
+            </fieldset>
+
+            <div class="flex gap-2 justify-end mt-4">
+                <button id="rf-cancel" class="px-4 py-2 bg-gray-400 text-white rounded">キャンセル</button>
+                <button id="rf-save" class="px-4 py-2 bg-blue-600 text-white rounded">💾 一時保存</button>
+                <button id="rf-generate" class="px-4 py-2 bg-orange-600 text-white rounded">📋 PDF 生成</button>
+            </div>
         </div>
     </div>
 
-
-    <div id="plate-options" class="fixed top-5 left-32 bg-slate-900/80 text-white p-3 rounded-lg hidden">
-        <div class="text-sm font-bold mb-2">敷鉄板サイズ</div>
-        <div class="flex gap-2">
-            <button class="plate-size-btn active" data-size="1.5x3">1.5×3</button>
-            <button class="plate-size-btn" data-size="2x4">2×4</button>
-            <button class="plate-size-btn" data-size="1x2">1×2</button>
-        </div>
-    </div>
-
-
-    <div class="fixed top-5 right-44 flex gap-2">
-        <button id="save-btn" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
-            💾 保存
-        </button>
-        <button id="load-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-            📂 読込
-        </button>
-    </div>
-
-    <div id="safety-panel" class="fixed top-32 right-5 bg-slate-900/90 text-white p-4 rounded-lg w-64">
-        <div class="font-bold mb-2">🛡️ 安全状態</div>
-            <div class="text-sm space-y-1">
-            <div id="safety-radius">作業半径: <span class="text-green-400">✅ OK</span></div>
-            <div id="safety-load">吊荷位置: <span class="text-slate-400">- なし</span></div>
-            <div id="safety-path">通路重複: <span class="text-slate-400">- なし</span></div>
-        </div>
-    </div>
-
-
-    <button id="export-json-btn" class="fixed top-[20px] right-[600px] px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg z-50">
-        💾 エクスポート
-    </button>
-    <input type="file" id="import-file" accept=".json" hidden>
-    <button id="import-json-btn" class="fixed top-[20px] right-[750px] px-4 py-2 bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg z-50">
-        📂 インポート
-    </button>
-    <button id="toggle-center-btn" class="fixed top-[80px] left-[100px] px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded z-50">
-        ⊕ 中心点表示
-    </button>
-
-
-
-
-
-
-
-    <!-- 触发按钮 -->
-<button id="report-btn" class="fixed top-[20px] right-[400px] px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg z-50">
-    📋 計画書作成
-</button>
-
-<!-- 表单弹窗 -->
-<div id="report-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center">
-    <div class="bg-white rounded-lg shadow-2xl w-[700px] max-h-[90vh] overflow-y-auto p-6">
-        <h2 class="text-2xl font-bold mb-4">📋 移動式クレーン作業計画書</h2>
-        
-        <!-- 基本信息 -->
-        <fieldset class="border p-3 mb-3">
-            <legend class="text-sm font-bold px-2">基本情報</legend>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-sm">現場名</label>
-                    <input id="rf-site" class="w-full border p-1 text-sm" placeholder="〇〇現場">
-                </div>
-                <div>
-                    <label class="text-sm">所属</label>
-                    <input id="rf-company" class="w-full border p-1 text-sm" placeholder="〇〇建設">
-                </div>
-                <div>
-                    <label class="text-sm">工事番号</label>
-                    <input id="rf-projectNo" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">作業日</label>
-                    <input id="rf-date" type="date" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">天候</label>
-                    <select id="rf-weather" class="w-full border p-1 text-sm">
-                        <option>晴れ</option>
-                        <option>曇り</option>
-                        <option>雨</option>
-                        <option>雪</option>
-                    </select>
-                </div>
-            </div>
-        </fieldset>
-        
-        <!-- クレーン情报 -->
-        <fieldset class="border p-3 mb-3">
-            <legend class="text-sm font-bold px-2">クレーン情報</legend>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-sm">機種</label>
-                    <input id="rf-craneModel" class="w-full border p-1 text-sm" value="TADANO GR-250N">
-                </div>
-                <div>
-                    <label class="text-sm">車両番号</label>
-                    <input id="rf-vehicleNo" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">最大荷重 (t)</label>
-                    <input id="rf-maxLoad" type="number" class="w-full border p-1 text-sm" value="25">
-                </div>
-                <div>
-                    <label class="text-sm">作業半径 (m)</label>
-                    <input id="rf-radius" type="number" class="w-full border p-1 text-sm" value="10">
-                </div>
-            </div>
-        </fieldset>
-        
-        <!-- 人员 -->
-        <fieldset class="border p-3 mb-3">
-            <legend class="text-sm font-bold px-2">人員</legend>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-sm">運転者</label>
-                    <input id="rf-operator" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">玉掛者</label>
-                    <input id="rf-rigger" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">合図者</label>
-                    <input id="rf-signaler" class="w-full border p-1 text-sm">
-                </div>
-                <div>
-                    <label class="text-sm">誘導員</label>
-                    <input id="rf-guide" class="w-full border p-1 text-sm">
-                </div>
-            </div>
-        </fieldset>
-        
-        <!-- 作業内容 -->
-        <fieldset class="border p-3 mb-3">
-            <legend class="text-sm font-bold px-2">作業内容</legend>
-            <div class="space-y-2">
-                <div>
-                    <label class="text-sm">午前作業</label>
-                    <textarea id="rf-morning" class="w-full border p-1 text-sm" rows="2"></textarea>
-                </div>
-                <div>
-                    <label class="text-sm">午後作業</label>
-                    <textarea id="rf-afternoon" class="w-full border p-1 text-sm" rows="2"></textarea>
-                </div>
-                <div>
-                    <label class="text-sm">主要吊荷</label>
-                    <input id="rf-mainLoad" class="w-full border p-1 text-sm" placeholder="例: 鉄骨 H型鋼 5t">
-                </div>
-            </div>
-        </fieldset>
-        
-        <!-- 安全条件 -->
-        <fieldset class="border p-3 mb-3">
-            <legend class="text-sm font-bold px-2">安全条件</legend>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="text-sm">風速中止基準 (m/s)</label>
-                    <input id="rf-windLimit" type="number" class="w-full border p-1 text-sm" value="10">
-                </div>
-                <div>
-                    <label class="text-sm">雨量中止基準 (mm/h)</label>
-                    <input id="rf-rainLimit" type="number" class="w-full border p-1 text-sm" value="10">
-                </div>
-            </div>
-            <div class="mt-2">
-                <label class="text-sm">特記事項</label>
-                <textarea id="rf-notes" class="w-full border p-1 text-sm" rows="2"></textarea>
-            </div>
-        </fieldset>
-        
-        <!-- 按钮 -->
-        <div class="flex gap-2 justify-end mt-4">
-            <button id="rf-cancel" class="px-4 py-2 bg-gray-400 text-white rounded">
-                キャンセル
-            </button>
-            <button id="rf-save" class="px-4 py-2 bg-blue-600 text-white rounded">
-                💾 一時保存
-            </button>
-            <button id="rf-generate" class="px-4 py-2 bg-orange-600 text-white rounded">
-                📋 PDF 生成
-            </button>
-        </div>
-    </div>
-</div>
-
-
-<script type="importmap">
-{
-    "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
     }
-}
-</script>
+    </script>
 
-<script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/main.js"></script>
 
- 
 </body>
 
 </html>

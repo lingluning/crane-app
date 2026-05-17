@@ -10,7 +10,6 @@ export const state = {
 
 
     showCenterPoints: true,   // 是否显示中心点
-    currentCraneId: 'TADANO_GR-160N'  // 当前选择的吊车型号
-
-    
+    currentCraneId: 'TADANO_GR-160N',  // 当前选择的吊车型号
+    actualLoad: 5.0,
 };

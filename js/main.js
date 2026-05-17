@@ -5,7 +5,7 @@ import {
 
 import {
     selectTool, updateGhost,
-    placeCrane, placeLoad, placePlate,
+    placeCrane, placeLoadPick, placeLoadDrop, placePlate,  // ⭐
     handleSelect, snapToGrid, updateCounters,
     updateCraneRadius, updateCraneButton
 } from './tools.js';
@@ -32,6 +32,9 @@ import { loadFormFromLocalStorage, saveFormToLocalStorage } from './export.js';
 
 import { exportProjectJSON, importProjectJSON } from './export.js';
 
+import { updateDistanceDisplay } from './safety-display.js';
+
+
 
 
 // ============= 鼠标移动 =============
@@ -57,7 +60,7 @@ window.addEventListener('mousemove', (event) => {
             }
             
             if (state.currentTool === 'crane') state.ghost.position.y += 0.75;
-            if (state.currentTool === 'load') state.ghost.position.y += 0.5;
+            if (state.currentTool === 'loadPick' || state.currentTool === 'loadDrop') state.ghost.position.y += 0.5;
             if (state.currentTool === 'plate') state.ghost.position.y += 0.05;
         }
     }
@@ -83,11 +86,13 @@ window.addEventListener('click', (event) => {
 
     switch (state.currentTool) {
         case 'crane': placeCrane(point); break;
-        case 'load': placeLoad(point); break;
+        case 'loadPick': placeLoadPick(point); break;
+        case 'loadDrop': placeLoadDrop(point); break;
         case 'plate': placePlate(point); break;
-        case 'forbidden': addForbiddenPoint(point); break;  // ⭐ 新增
+        case 'forbidden': addForbiddenPoint(point); break;
         case 'path': addPathPoint(point); break;
-        case 'measure': addMeasurePoint(point); break;  
+        case 'measure': addMeasurePoint(point); break;
+
     }
 });
 
@@ -292,6 +297,47 @@ document.getElementById('toggle-center-btn').addEventListener('click', () => {
         }
     });
 });
+
+// 定时更新距离显示
+setInterval(updateDistanceDisplay, 200);
+
+// 实际吊重输入
+document.getElementById('actual-load-input').addEventListener('input', (e) => {
+    state.actualLoad = parseFloat(e.target.value) || 0;
+});
+
+
+// アウトリガー切换
+document.querySelectorAll('.outrigger-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        
+        // 更新按钮样式
+        document.querySelectorAll('.outrigger-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // 更新吊车状态
+        const crane = state.placedObjects.find(o => o.userData.type === 'crane');
+        if (crane) {
+            crane.userData.outriggerMode = mode;
+            
+            // 更新最大半径上限
+            const maxRadius = crane.userData.craneData.outrigger.modes[mode].maxRadius;
+            document.getElementById('radius-slider').max = maxRadius;
+            
+            if (crane.userData.workRadius > maxRadius) {
+                // 半径超过上限，自动缩小
+                import('./tools.js').then(({ updateCraneRadius }) => {
+                    updateCraneRadius(crane, maxRadius);
+                    document.getElementById('radius-slider').value = maxRadius;
+                    document.getElementById('radius-value').textContent = maxRadius.toFixed(1);
+                });
+            }
+        }
+    });
+});
+
+
 
 
 
