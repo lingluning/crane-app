@@ -7,7 +7,8 @@ import {
     selectTool, updateGhost,
     placeCrane, placeLoadPick, placeLoadDrop, placePlate,  // ⭐
     handleSelect, snapToGrid, updateCounters,
-    updateCraneRadius, updateCraneButton
+    updateCraneRadius, updateCraneButton,
+    showToast, removeObjectFully
 } from './tools.js';
 
 import { serialize, deserialize, startAutoSave } from './persistence.js';
@@ -32,7 +33,8 @@ import { loadFormFromLocalStorage, saveFormToLocalStorage } from './export.js';
 
 import { exportProjectJSON, importProjectJSON } from './export.js';
 
-import { updateDistanceDisplay } from './safety-display.js';
+import { updateSafetyDisplay } from './safety-display.js';
+import { getCrane, getMaxRadius } from './crane-database.js';
 
 
 
@@ -68,11 +70,14 @@ window.addEventListener('mousemove', (event) => {
 
 // ============= 鼠标点击 =============
 window.addEventListener('click', (event) => {
+    // ⭐ 只处理 3D canvas 上的点击，避免 UI 按钮误触发放置/绘制
+    if (event.target.tagName !== 'CANVAS') return;
+
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
-    
+
     // 选择模式直接处理（不需要打到地面）
     if (state.currentTool === 'select') {
         handleSelect();
@@ -120,33 +125,7 @@ window.addEventListener('keydown', (event) => {
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
         if (state.selectedObject) {
-            // ⭐ 如果是禁止区，也删除边框
-            if (state.selectedObject.userData.border) {
-                scene.remove(state.selectedObject.userData.border);
-            }
-            if (state.selectedObject.userData.radiusCircle) {
-                scene.remove(state.selectedObject.userData.radiusCircle);
-            }
-            
-            if (state.selectedObject.userData.arrows) {   // ⭐ 新增
-                state.selectedObject.userData.arrows.forEach(a => scene.remove(a));
-            }
-
-            if (state.selectedObject.userData.centerMarker) {  // ⭐ 新增
-            scene.remove(state.selectedObject.userData.centerMarker);
-            }
-
-            if (state.selectedObject.userData.label) {
-                scene.remove(state.selectedObject.userData.label);
-            }
-
-            if (state.selectedObject.userData.balls) {
-                state.selectedObject.userData.balls.forEach(b => scene.remove(b));
-            }
-
-            scene.remove(state.selectedObject);
-            const index = state.placedObjects.indexOf(state.selectedObject);
-            if (index > -1) state.placedObjects.splice(index, 1);
+            removeObjectFully(state.selectedObject);
             state.selectedObject = null;
             updateCounters();
             updateCraneButton();
@@ -173,12 +152,9 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
 document.getElementById('undo-btn').addEventListener('click', () => {
     if (state.placedObjects.length === 0) return;
 
-    const last = state.placedObjects.pop();
-
-    if (last.userData.radiusCircle) {
-        scene.remove(last.userData.radiusCircle);
-    }
-    scene.remove(last);
+    const last = state.placedObjects[state.placedObjects.length - 1];
+    if (state.selectedObject === last) state.selectedObject = null;
+    removeObjectFully(last);
     updateCounters();
     updateCraneButton();
 });
@@ -220,7 +196,7 @@ document.getElementById('save-btn').addEventListener('click', () => {
     const data = serialize();
     localStorage.setItem('crane_plan', JSON.stringify(data));
     
-    alert(`✅ 保存しました\n${data.objects.length} 個のオブジェクト`);
+    showToast(`保存しました（${data.objects.length} 個のオブジェクト）`, 'success');
     console.log('保存的数据:', data);
 });
 
@@ -228,16 +204,16 @@ document.getElementById('load-btn').addEventListener('click', () => {
     const saved = localStorage.getItem('crane_plan');
     
     if (!saved) {
-        alert('保存されたプランがありません');
+        showToast('保存されたプランがありません', 'warning');
         return;
     }
     
     try {
         const data = JSON.parse(saved);
         deserialize(data);
-        alert(`✅ 読み込みました\n${data.objects.length} 個のオブジェクト\n保存時刻: ${data.savedAt}`);
+        showToast(`読み込みました（${data.objects.length} 個 / ${data.savedAt}）`, 'success', 3500);
     } catch (e) {
-        alert('❌ 読み込みエラー');
+        showToast('読み込みエラー', 'error');
         console.error(e);
     }
 });
@@ -271,7 +247,7 @@ document.getElementById('report-btn').addEventListener('click', () => {
 // "一時保存"按钮
 document.getElementById('rf-save').addEventListener('click', () => {
     saveFormToLocalStorage();
-    alert('✅ 入力内容を一時保存しました');
+    showToast('入力内容を一時保存しました', 'success');
 });
 
 
@@ -298,44 +274,102 @@ document.getElementById('toggle-center-btn').addEventListener('click', () => {
     });
 });
 
-// 定时更新距离显示
-setInterval(updateDistanceDisplay, 200);
+// 定时更新安全 / 距离显示
+setInterval(updateSafetyDisplay, 200);
 
 // 实际吊重输入
 document.getElementById('actual-load-input').addEventListener('input', (e) => {
     state.actualLoad = parseFloat(e.target.value) || 0;
 });
 
+// ============= Week 11: ブーム + アウトリガー 下拉 =============
 
-// アウトリガー切换
-document.querySelectorAll('.outrigger-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const mode = btn.dataset.mode;
-        
-        // 更新按钮样式
-        document.querySelectorAll('.outrigger-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        
-        // 更新吊车状态
-        const crane = state.placedObjects.find(o => o.userData.type === 'crane');
-        if (crane) {
-            crane.userData.outriggerMode = mode;
-            
-            // 更新最大半径上限
-            const maxRadius = crane.userData.craneData.outrigger.modes[mode].maxRadius;
-            document.getElementById('radius-slider').max = maxRadius;
-            
-            if (crane.userData.workRadius > maxRadius) {
-                // 半径超过上限，自动缩小
-                import('./tools.js').then(({ updateCraneRadius }) => {
-                    updateCraneRadius(crane, maxRadius);
-                    document.getElementById('radius-slider').value = maxRadius;
-                    document.getElementById('radius-value').textContent = maxRadius.toFixed(1);
-                });
-            }
-        }
+function updateBoomLengthOptions() {
+    const crane = getCrane(state.currentCraneId);
+    if (!crane) return;
+
+    const select = document.getElementById('boom-length-select');
+    if (!select) return;
+
+    select.innerHTML = '';
+    crane.boom.availableLengths.forEach(length => {
+        const option = document.createElement('option');
+        option.value = length;
+        option.textContent = `${length} m`;
+        if (length === state.currentBoomLength) option.selected = true;
+        select.appendChild(option);
     });
+
+    // 如果当前 boom 不在新列表里，退到第一个
+    if (!crane.boom.availableLengths.includes(state.currentBoomLength)) {
+        state.currentBoomLength = crane.boom.availableLengths[0];
+        select.value = state.currentBoomLength;
+    }
+}
+
+function updateOutriggerOptions() {
+    const crane = getCrane(state.currentCraneId);
+    if (!crane) return;
+
+    const select = document.getElementById('outrigger-select');
+    if (!select) return;
+
+    select.innerHTML = '';
+    Object.values(crane.outrigger.modes).forEach(mode => {
+        const option = document.createElement('option');
+        option.value = mode.id;
+        const areaLabel = mode.workingArea === 'side' ? ' (側方のみ)' : ' (全周)';
+        option.textContent = `${mode.label}${areaLabel}`;
+        if (mode.id === state.currentOutriggerMode) option.selected = true;
+        select.appendChild(option);
+    });
+
+    // 当前模式不存在时退回默认
+    const modeKeys = Object.keys(crane.outrigger.modes);
+    if (!modeKeys.includes(state.currentOutriggerMode)) {
+        state.currentOutriggerMode = modeKeys[0];
+        select.value = state.currentOutriggerMode;
+    }
+}
+
+function syncRadiusSliderUpperBound() {
+    const maxR = getMaxRadius(
+        state.currentCraneId,
+        state.currentOutriggerMode,
+        state.currentBoomLength
+    );
+
+    const slider = document.getElementById('radius-slider');
+    if (slider) {
+        slider.max = maxR;
+        const crane = state.placedObjects.find(o => o.userData.type === 'crane');
+        if (crane && crane.userData.workRadius > maxR) {
+            import('./tools.js').then(({ updateCraneRadius }) => {
+                updateCraneRadius(crane, maxR);
+                slider.value = maxR;
+                document.getElementById('radius-value').textContent = maxR.toFixed(1);
+            });
+        }
+    }
+}
+
+document.getElementById('boom-length-select').addEventListener('change', (e) => {
+    state.currentBoomLength = parseFloat(e.target.value);
+    syncRadiusSliderUpperBound();
 });
+
+document.getElementById('outrigger-select').addEventListener('change', (e) => {
+    state.currentOutriggerMode = e.target.value;
+    // 同步到当前吊车（旧字段，便于其他代码读取）
+    const crane = state.placedObjects.find(o => o.userData.type === 'crane');
+    if (crane) crane.userData.outriggerMode = e.target.value;
+    syncRadiusSliderUpperBound();
+});
+
+// 启动时初始化下拉
+updateBoomLengthOptions();
+updateOutriggerOptions();
+syncRadiusSliderUpperBound();
 
 
 

@@ -5,8 +5,59 @@ import { getCrane } from './crane-database.js';
 import { CSS2DObject } from './scene.js';
 
 
+// ============= Toast 通知 =============
+const TOAST_ICONS = { warning: '⚠️', error: '❌', info: 'ℹ️', success: '✅' };
+
+export function showToast(message, type = 'info', duration = 2500) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${TOAST_ICONS[type] || ''}</span><span>${message}</span>`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('leaving');
+        toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    }, duration);
+}
+
+
+// ============= 完整移除一个 placedObject =============
+// 清理 scene 中所有附属对象 + CSS2DObject DOM 元素 + state.placedObjects 索引
+export function removeObjectFully(obj) {
+    if (!obj) return;
+
+    if (obj.userData.border)       scene.remove(obj.userData.border);
+    if (obj.userData.radiusCircle) scene.remove(obj.userData.radiusCircle);
+    if (obj.userData.centerMarker) scene.remove(obj.userData.centerMarker);
+    if (obj.userData.arrows)       obj.userData.arrows.forEach(a => scene.remove(a));
+    if (obj.userData.balls)        obj.userData.balls.forEach(b => scene.remove(b));
+
+    // CSS2DObject 标签：从父节点 detach + 手动移除 DOM 元素
+    if (obj.userData.textLabel) {
+        const lbl = obj.userData.textLabel;
+        obj.remove(lbl);
+        if (lbl.element && lbl.element.parentNode) {
+            lbl.element.parentNode.removeChild(lbl.element);
+        }
+    }
+
+    scene.remove(obj);
+    const idx = state.placedObjects.indexOf(obj);
+    if (idx > -1) state.placedObjects.splice(idx, 1);
+}
+
+
 // ============= 工具切换 =============
 export function selectTool(toolName) {
+    // ⭐ 已有吊车时禁用 crane 工具
+    if (toolName === 'crane' && state.placedObjects.some(o => o.userData.type === 'crane')) {
+        showToast('クレーンは 1 台のみ配置可能です', 'warning');
+        return;
+    }
+
     state.currentTool = toolName;
 
     document.querySelectorAll('.tool-btn').forEach(b => {
@@ -96,7 +147,7 @@ export function updateGhost() {
 export function placeCrane(point) {
     const existingCrane = state.placedObjects.find(o => o.userData.type === 'crane');
     if (existingCrane) {
-        alert('⚠️ クレーンは 1 台のみ配置可能です');
+        showToast('クレーンは 1 台のみ配置可能です', 'warning');
         return;
     }
 
@@ -108,7 +159,7 @@ export function placeCrane(point) {
     // 获取吊车数据
     const craneData = getCrane(state.currentCraneId);
     if (!craneData) {
-        alert('吊车数据不存在');
+        showToast('クレーンデータが存在しません', 'error');
         return;
     }
     
@@ -129,7 +180,8 @@ export function placeCrane(point) {
         craneId: state.currentCraneId,
         craneData: craneData,
         workRadius: 10,
-        outriggerMode: 'max',  // 默认全張出
+        outriggerMode: state.currentOutriggerMode,
+        boomLength: state.currentBoomLength,
         centerOffset: craneData.centerPoint
     };
     
@@ -149,6 +201,9 @@ export function placeCrane(point) {
     updateCounters();
     document.getElementById('crane-info').classList.remove('hidden');
     updateCraneButton();
+
+    // ⭐ 放置后自动切到选择模式 + 去掉 ghost
+    selectTool('select');
 }
 
 // ⭐ 新函数：中心点标记

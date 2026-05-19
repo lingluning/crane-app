@@ -1,64 +1,194 @@
 /**
- * 吊车数据库
- * 数据来源：各厂商官方载荷表 PDF
- * 注意：仅供参考，作业前必须以实际负荷率表为准
+ * 吊车数据库（v2 - 工程級）
+ *
+ * 数据结构：
+ *   loadChart[outriggerMode] = [
+ *     { boomLength, criticalAngle, points: [{ radius, capacity }, ...] },
+ *     ...
+ *   ]
+ *
+ * outriggerMode 通用 key:
+ *   maxFull   - 最大張出（全周作業可）
+ *   mid61/mid50/mid38 - 中間張出（側方のみ）
+ *   minRetract / min  - 最縮小（側方のみ）
+ *
+ * ⚠ 仅供参考。作业前必须以实际负荷率表为准。
  */
 
 export const CRANE_DATABASE = {
-    
-    // ============= 16T クラス =============
+
+    // ============= 25T クラス =============
+    'KATO_CR-250RV': {
+        id: 'KATO_CR-250RV',
+        manufacturer: 'KATO',
+        model: 'CR-250RV',
+        displayName: 'KATO CR-250RV (25t)',
+        category: 'roughTerrain',
+        maxCapacity: 25.0,
+
+        dimensions: {
+            length: 10.5,
+            width: 2.5,
+            height: 3.5,
+            weight: 28000
+        },
+
+        centerPoint: { offsetX: 0, offsetZ: 0 },
+
+        boom: {
+            availableLengths: [9.35, 16.4, 23.45, 30.5],
+            sections: 5
+        },
+
+        hook: { capacity: 25.0, weight: 0.23 },
+
+        ropeFalls: [
+            { boomLength: 9.35,  falls: 7 },
+            { boomLength: 16.4,  falls: 6 },
+            { boomLength: 23.45, falls: 4 },
+            { boomLength: 30.5,  falls: 4 }
+        ],
+
+        outrigger: {
+            modes: {
+                maxFull: {
+                    id: 'maxFull',
+                    label: 'アウトリガ最大張出',
+                    extensionWidth: 6.6,
+                    workingArea: 'full',
+                    note: '最大能力。基本この状態で計画'
+                },
+                mid61: {
+                    id: 'mid61',
+                    label: 'アウトリガ中間張出 6.1m',
+                    extensionWidth: 6.1,
+                    workingArea: 'side',
+                    note: '前後への吊上げ禁止'
+                },
+                mid50: {
+                    id: 'mid50',
+                    label: 'アウトリガ中間張出 5.0m',
+                    extensionWidth: 5.0,
+                    workingArea: 'side'
+                },
+                mid38: {
+                    id: 'mid38',
+                    label: 'アウトリガ中間張出 3.8m',
+                    extensionWidth: 3.8,
+                    workingArea: 'side'
+                },
+                minRetract: {
+                    id: 'minRetract',
+                    label: 'アウトリガ最縮小張出',
+                    extensionWidth: 2.31,
+                    workingArea: 'side'
+                }
+            },
+
+            positions: [
+                { name: 'frontLeft',  x: -1.2, z: -1.8 },
+                { name: 'frontRight', x:  1.2, z: -1.8 },
+                { name: 'rearLeft',   x: -1.2, z:  1.8 },
+                { name: 'rearRight',  x:  1.2, z:  1.8 }
+            ]
+        },
+
+        // ⭐ 载荷表（核心数据）
+        loadChart: {
+            maxFull: [
+                {
+                    boomLength: 9.35,
+                    criticalAngle: null,
+                    points: [
+                        { radius: 2.5, capacity: 25.00 },
+                        { radius: 3.0, capacity: 25.00 },
+                        { radius: 3.5, capacity: 25.00 },
+                        { radius: 4.0, capacity: 23.50 },
+                        { radius: 4.5, capacity: 21.50 },
+                        { radius: 5.0, capacity: 19.60 },
+                        { radius: 5.5, capacity: 17.80 },
+                        { radius: 6.0, capacity: 16.30 },
+                        { radius: 6.5, capacity: 15.10 }
+                    ]
+                },
+                { boomLength: 16.4,  criticalAngle: null, points: [] },  // TODO: 录入
+                { boomLength: 23.45, criticalAngle: null, points: [] },  // TODO: 录入
+                { boomLength: 30.5,  criticalAngle: null, points: [] }   // TODO: 录入
+            ],
+            mid61: [
+                { boomLength: 9.35,  criticalAngle: null, points: [] },
+                { boomLength: 16.4,  criticalAngle: null, points: [] },
+                { boomLength: 23.45, criticalAngle: null, points: [] },
+                { boomLength: 30.5,  criticalAngle: null, points: [] }
+            ],
+            mid50: [
+                { boomLength: 9.35,  criticalAngle: null, points: [] },
+                { boomLength: 16.4,  criticalAngle: null, points: [] },
+                { boomLength: 23.45, criticalAngle: null, points: [] },
+                { boomLength: 30.5,  criticalAngle: null, points: [] }
+            ],
+            mid38: [
+                { boomLength: 9.35,  criticalAngle: null, points: [] },
+                { boomLength: 16.4,  criticalAngle: null, points: [] },
+                { boomLength: 23.45, criticalAngle: null, points: [] },
+                { boomLength: 30.5,  criticalAngle: null, points: [] }
+            ],
+            minRetract: [
+                { boomLength: 9.35,  criticalAngle: null, points: [] },
+                { boomLength: 16.4,  criticalAngle: null, points: [] },
+                { boomLength: 23.45, criticalAngle: null, points: [] },
+                { boomLength: 30.5,  criticalAngle: null, points: [] }
+            ]
+        }
+    },
+
+    // ============= 16T クラス（迁移到新结构） =============
     'TADANO_GR-160N': {
-        // 基础识别
         id: 'TADANO_GR-160N',
         manufacturer: 'TADANO',
         model: 'GR-160N',
         displayName: 'TADANO GR-160N (16t)',
-        category: 'rough_terrain',
-        maxCapacity: 16,  // 吨
-        
-        // 尺寸（米）
-        dimensions: {
-            length: 9.5,
-            width: 2.5,
-            height: 3.4,
-            weight: 21000  // kg
-        },
-        
-        // 中心点（相对于模型原点的偏移）
-        centerPoint: {
-            offsetX: 0,
-            offsetZ: 0
-        },
-        
-        // ブーム（臂）
+        category: 'roughTerrain',
+        maxCapacity: 16,
+
+        dimensions: { length: 9.5, width: 2.5, height: 3.4, weight: 21000 },
+        centerPoint: { offsetX: 0, offsetZ: 0 },
+
         boom: {
-            minLength: 8.4,
-            maxLength: 24.5,
+            availableLengths: [8.4, 14.0, 19.5, 24.5],
             sections: 4
         },
-        
-        // アウトリガー
+
+        hook: { capacity: 16.0, weight: 0.18 },
+
+        ropeFalls: [
+            { boomLength: 8.4,  falls: 6 },
+            { boomLength: 14.0, falls: 4 },
+            { boomLength: 19.5, falls: 4 },
+            { boomLength: 24.5, falls: 4 }
+        ],
+
         outrigger: {
-            // 3 种张出模式
             modes: {
-                min: {
-                    span: 3.5,           // 张出长度（左右总宽）
-                    maxRadius: 8,        // 此模式下最大作业半径
-                    description: '最小張出'
+                maxFull: {
+                    id: 'maxFull',
+                    label: 'アウトリガ最大張出',
+                    extensionWidth: 5.4,
+                    workingArea: 'full'
                 },
                 mid: {
-                    span: 4.8,
-                    maxRadius: 11,
-                    description: '中間張出'
+                    id: 'mid',
+                    label: 'アウトリガ中間張出',
+                    extensionWidth: 4.8,
+                    workingArea: 'side'
                 },
-                max: {
-                    span: 5.4,
-                    maxRadius: 14,
-                    description: '全張出'
+                min: {
+                    id: 'min',
+                    label: 'アウトリガ最縮小',
+                    extensionWidth: 3.5,
+                    workingArea: 'side'
                 }
             },
-            
-            // 4 个支腿的位置（相对吊车中心）
             positions: [
                 { name: 'frontLeft',  x: -1.0, z: -1.5 },
                 { name: 'frontRight', x:  1.0, z: -1.5 },
@@ -66,128 +196,225 @@ export const CRANE_DATABASE = {
                 { name: 'rearRight',  x:  1.0, z:  1.5 }
             ]
         },
-        
-        // 载荷表（吨）
-        // 格式：loadChart[模式][作业半径] = 最大吊重
+
         loadChart: {
-            max: {  // 全張出
-                3.0: 16.0,
-                3.5: 14.5,
-                4.0: 12.5,
-                5.0: 9.8,
-                6.0: 7.6,
-                7.0: 6.0,
-                8.0: 4.8,
-                9.0: 3.9,
-                10.0: 3.2,
-                11.0: 2.7,
-                12.0: 2.3,
-                13.0: 2.0,
-                14.0: 1.7
-            },
-            mid: {  // 中間張出
-                3.0: 12.0,
-                4.0: 10.5,
-                5.0: 8.0,
-                6.0: 6.2,
-                7.0: 4.8,
-                8.0: 3.8,
-                9.0: 3.1,
-                10.0: 2.5,
-                11.0: 2.1
-            },
-            min: {  // 最小張出
-                3.0: 8.0,
-                4.0: 6.5,
-                5.0: 4.8,
-                6.0: 3.6,
-                7.0: 2.8,
-                8.0: 2.2
-            }
+            // 旧数据迁移：原来只有 1 条曲线（按半径），现在按 boomLength 区分
+            // 暂时把旧数据放到 maxFull / 8.4m boom 下，作为参考
+            maxFull: [
+                {
+                    boomLength: 8.4,
+                    criticalAngle: null,
+                    points: [
+                        { radius: 3.0,  capacity: 16.0 },
+                        { radius: 3.5,  capacity: 14.5 },
+                        { radius: 4.0,  capacity: 12.5 },
+                        { radius: 5.0,  capacity:  9.8 },
+                        { radius: 6.0,  capacity:  7.6 },
+                        { radius: 7.0,  capacity:  6.0 },
+                        { radius: 8.0,  capacity:  4.8 }
+                    ]
+                },
+                { boomLength: 14.0, criticalAngle: null, points: [] },
+                { boomLength: 19.5, criticalAngle: null, points: [] },
+                { boomLength: 24.5, criticalAngle: null, points: [] }
+            ],
+            mid: [
+                {
+                    boomLength: 8.4,
+                    criticalAngle: null,
+                    points: [
+                        { radius: 3.0,  capacity: 12.0 },
+                        { radius: 4.0,  capacity: 10.5 },
+                        { radius: 5.0,  capacity:  8.0 },
+                        { radius: 6.0,  capacity:  6.2 },
+                        { radius: 7.0,  capacity:  4.8 }
+                    ]
+                },
+                { boomLength: 14.0, criticalAngle: null, points: [] },
+                { boomLength: 19.5, criticalAngle: null, points: [] },
+                { boomLength: 24.5, criticalAngle: null, points: [] }
+            ],
+            min: [
+                {
+                    boomLength: 8.4,
+                    criticalAngle: null,
+                    points: [
+                        { radius: 3.0, capacity: 8.0 },
+                        { radius: 4.0, capacity: 6.5 },
+                        { radius: 5.0, capacity: 4.8 },
+                        { radius: 6.0, capacity: 3.6 }
+                    ]
+                },
+                { boomLength: 14.0, criticalAngle: null, points: [] },
+                { boomLength: 19.5, criticalAngle: null, points: [] },
+                { boomLength: 24.5, criticalAngle: null, points: [] }
+            ]
         }
     }
-    
-    // 其他 3 款先留空，Week 11-12 录入
-    // 'TADANO_GR-250N': { ... },
-    // 'TADANO_GR-500N': { ... },
-    // 'TADANO_GR-700N': { ... },
 };
 
 // ============= 工具函数 =============
 
-/**
- * 根据 ID 获取吊车数据
- */
 export function getCrane(id) {
     return CRANE_DATABASE[id];
 }
 
-/**
- * 获取所有吊车列表（UI 下拉用）
- */
 export function getAllCranes() {
-    return Object.values(CRANE_DATABASE).map(c => ({
-        id: c.id,
-        displayName: c.displayName,
-        maxCapacity: c.maxCapacity
-    }));
+    return Object.values(CRANE_DATABASE)
+        .filter(c => c.id)
+        .map(c => ({
+            id: c.id,
+            displayName: c.displayName,
+            maxCapacity: c.maxCapacity
+        }));
 }
 
 /**
- * 查载荷表：给定吊车、模式、距离 → 最大吊重
+ * 获取某 アウトリガー模式 + ブーム长度 的载荷曲线
  */
-export function queryLoadChart(craneId, outriggerMode, radius) {
+export function getBoomLoadCurve(craneId, outriggerMode, boomLength) {
     const crane = CRANE_DATABASE[craneId];
     if (!crane) return null;
-    
-    const chart = crane.loadChart[outriggerMode];
-    if (!chart) return null;
-    
-    // 找最接近的两个半径值，插值
-    const radii = Object.keys(chart).map(Number).sort((a, b) => a - b);
-    
-    // 超出范围
-    if (radius < radii[0]) return chart[radii[0]];
-    if (radius > radii[radii.length - 1]) return 0;  // 0 表示不能吊
-    
-    // 找两边的值
-    for (let i = 0; i < radii.length - 1; i++) {
-        if (radius >= radii[i] && radius <= radii[i + 1]) {
-            const r1 = radii[i];
-            const r2 = radii[i + 1];
-            const l1 = chart[r1];
-            const l2 = chart[r2];
-            
-            // 线性插值
-            const ratio = (radius - r1) / (r2 - r1);
-            return l1 + (l2 - l1) * ratio;
-        }
-    }
-    
-    return 0;
+
+    const modeData = crane.loadChart[outriggerMode];
+    if (!modeData) return null;
+
+    return modeData.find(curve => curve.boomLength === boomLength);
 }
 
 /**
- * 安全判定
- * @param {number} actualLoad 实际吊重 (吨)
- * @param {number} maxLoad 最大允许 (吨)
- * @returns {string} 'safe' | 'caution' | 'danger'
+ * 查询载荷
+ * @returns { capacity, isInRange, isCriticalAngle, message }
+ */
+export function queryLoadChart(craneId, outriggerMode, boomLength, radius) {
+    const curve = getBoomLoadCurve(craneId, outriggerMode, boomLength);
+
+    if (!curve) {
+        return {
+            capacity: 0,
+            isInRange: false,
+            isCriticalAngle: false,
+            message: '該当データなし'
+        };
+    }
+
+    const points = curve.points;
+    if (!points || points.length === 0) {
+        return {
+            capacity: 0,
+            isInRange: false,
+            isCriticalAngle: false,
+            message: 'データ未入力'
+        };
+    }
+
+    const minR = points[0].radius;
+    const maxR = points[points.length - 1].radius;
+
+    if (radius < minR) {
+        return {
+            capacity: points[0].capacity,
+            isInRange: false,
+            isCriticalAngle: false,
+            message: `最小半径 ${minR}m 未満`
+        };
+    }
+
+    if (radius > maxR) {
+        return {
+            capacity: 0,
+            isInRange: false,
+            isCriticalAngle: false,
+            message: `最大半径 ${maxR}m 超過`
+        };
+    }
+
+    for (let i = 0; i < points.length - 1; i++) {
+        if (radius >= points[i].radius && radius <= points[i + 1].radius) {
+            const r1 = points[i].radius;
+            const r2 = points[i + 1].radius;
+            const c1 = points[i].capacity;
+            const c2 = points[i + 1].capacity;
+
+            const ratio = (radius - r1) / (r2 - r1);
+            const capacity = c1 + (c2 - c1) * ratio;
+
+            let isCriticalAngle = false;
+            if (curve.criticalAngle !== null) {
+                isCriticalAngle = true;
+            }
+
+            return {
+                capacity,
+                isInRange: true,
+                isCriticalAngle,
+                message: isCriticalAngle ? '⚠️ 危険角度範囲' : ''
+            };
+        }
+    }
+
+    return {
+        capacity: 0,
+        isInRange: false,
+        isCriticalAngle: false,
+        message: 'エラー'
+    };
+}
+
+/**
+ * 获取某模式 + boom 的最大可用半径（用于半径滑杆上限）
+ */
+export function getMaxRadius(craneId, outriggerMode, boomLength) {
+    const curve = getBoomLoadCurve(craneId, outriggerMode, boomLength);
+    if (!curve || !curve.points || curve.points.length === 0) return 15;
+    return curve.points[curve.points.length - 1].radius;
+}
+
+/**
+ * 检查作業区域限制（全周 / 側方限定）
+ * @param {number} angle 载荷相对吊车的角度（度，0 = 正前）
+ */
+export function checkWorkingArea(craneId, outriggerMode, angle) {
+    const crane = CRANE_DATABASE[craneId];
+    if (!crane) return { ok: true };
+
+    const mode = crane.outrigger.modes[outriggerMode];
+    if (!mode) return { ok: true };
+
+    if (mode.workingArea === 'full') return { ok: true };
+
+    // 側方限定：前后 ±30° 禁止
+    const normalizedAngle = ((angle % 360) + 360) % 360;
+
+    const isFrontBack =
+        (normalizedAngle >= 330 || normalizedAngle <= 30) ||
+        (normalizedAngle >= 150 && normalizedAngle <= 210);
+
+    if (isFrontBack && mode.workingArea === 'side') {
+        return {
+            ok: false,
+            message: '前後への吊上げ禁止（側方のみ作業可）'
+        };
+    }
+
+    return { ok: true };
+}
+
+/**
+ * 综合安全判定
  */
 export function evaluateSafety(actualLoad, maxLoad) {
     if (!maxLoad || maxLoad <= 0) return 'danger';
-    
+
     const usage = actualLoad / maxLoad;
-    
-    if (usage <= 0.7) return 'safe';      // ≤70% 安全
-    if (usage <= 0.9) return 'caution';   // 70-90% 注意
-    return 'danger';                       // >90% 危险
+
+    if (usage <= 0.7) return 'safe';
+    if (usage <= 0.9) return 'caution';
+    return 'danger';
 }
 
-/**
- * 安全颜色对应
- */
 export const SAFETY_COLORS = {
-    safe: 0x00aa00,      // 绿
-    caution: 0xffaa00,   // 黄
-    danger: 0xff0000     // 红
+    safe: 0x00aa00,
+    caution: 0xffaa00,
+    danger: 0xff0000
 };

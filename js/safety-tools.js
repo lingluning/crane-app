@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { scene } from './scene.js';
 import { state } from './state.js';
-import { updateCounters } from './tools.js';
+import { updateCounters, showToast } from './tools.js';
 import { CSS2DObject } from './scene.js';
 
 
@@ -45,7 +45,7 @@ export function addForbiddenPoint(point) {
 
 export function finishForbiddenZone() {
     if (state.drawingPoints.length < 3) {
-        alert('⚠️ 3 点以上必要です');
+        showToast('3 点以上必要です', 'warning');
         return;
     }
     
@@ -146,7 +146,7 @@ export function addPathPoint(point) {
 
 export function finishPath() {
     if (state.drawingPoints.length < 2) {
-        alert('⚠️ 2 点以上必要です');
+        showToast('2 点以上必要です', 'warning');
         return;
     }
     

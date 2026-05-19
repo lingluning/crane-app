@@ -28,6 +28,17 @@ document.body.appendChild(renderer.domElement);
 
 export const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.zoomToCursor = true;   // ⭐ 滚轮缩放朝向鼠标位置
+
+// ⭐ 鼠标按键映射：
+//   左键 = 不响应（保留给放置/选择）
+//   中键 = 旋转视角
+//   右键 = 平移
+controls.mouseButtons = {
+    LEFT:   null,
+    MIDDLE: THREE.MOUSE.ROTATE,
+    RIGHT:  THREE.MOUSE.PAN
+};
 
 
 // ============= 标签渲染器 =============

@@ -1,6 +1,7 @@
 import { camera, controls, renderer, scene } from './scene.js';
 import { state } from './state.js';
 import * as THREE from 'three';
+import { showToast } from './tools.js';
 
 // 保存当前视角
 function saveCurrentView() {
@@ -410,7 +411,7 @@ export async function generateReport() {
     // 4. 在新窗口打开
     const newWindow = window.open('', '_blank');
     if (!newWindow) {
-        alert('ポップアップがブロックされました。ブラウザの設定を確認してください。');
+        showToast('ポップアップがブロックされました。ブラウザの設定を確認してください', 'error', 4000);
         return;
     }
     newWindow.document.write(html);
@@ -479,9 +480,9 @@ export function importProjectJSON(file) {
                 });
             }
             
-            alert(`✅ プロジェクトを読み込みました`);
+            showToast('プロジェクトを読み込みました', 'success');
         } catch (err) {
-            alert('❌ ファイル形式エラー');
+            showToast('ファイル形式エラー', 'error');
             console.error(err);
         }
     };
