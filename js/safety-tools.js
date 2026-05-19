@@ -16,6 +16,49 @@ export function hideHint() {
     document.getElementById('drawing-hint').classList.add('hidden');
 }
 
+// ============= 绘制预览（虚线 + 端点小球）共用 =============
+function createDrawingPreview(points, color, dashSize, gapSize) {
+    const group = new THREE.Group();
+
+    // 抬高一点避免和地面 z-fight
+    const lifted = points.map(p => new THREE.Vector3(p.x, p.y + 0.1, p.z));
+
+    // 端点小球
+    const ballGeom = new THREE.SphereGeometry(0.25, 12, 12);
+    const markerMat = new THREE.MeshBasicMaterial({
+        color,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.95
+    });
+    lifted.forEach(pt => {
+        const ball = new THREE.Mesh(ballGeom, markerMat);
+        ball.position.copy(pt);
+        ball.renderOrder = 999;
+        group.add(ball);
+    });
+
+    // 虚线
+    if (lifted.length >= 2) {
+        const geom = new THREE.BufferGeometry().setFromPoints(lifted);
+        const mat = new THREE.LineDashedMaterial({
+            color,
+            dashSize,
+            gapSize,
+            depthTest: false,
+            transparent: true,
+            opacity: 0.95
+        });
+        const line = new THREE.Line(geom, mat);
+        line.computeLineDistances();
+        line.renderOrder = 999;
+        group.add(line);
+    }
+
+    return group;
+}
+
+
 // ============= 立入禁止区 =============
 export function addForbiddenPoint(point) {
     // 把当前点加入正在画的列表
@@ -26,20 +69,11 @@ export function addForbiddenPoint(point) {
         scene.remove(state.drawingPreview);
         state.drawingPreview = null;
     }
-    
-    // 画虚线连接所有点
-    if (state.drawingPoints.length >= 2) {
-        const geometry = new THREE.BufferGeometry().setFromPoints(state.drawingPoints);
-        const material = new THREE.LineDashedMaterial({
-            color: 0xff0000,
-            dashSize: 0.3,
-            gapSize: 0.2
-        });
-        state.drawingPreview = new THREE.Line(geometry, material);
-        state.drawingPreview.computeLineDistances();
-        scene.add(state.drawingPreview);
-    }
-    
+
+    // 画端点 + 虚线（红色）
+    state.drawingPreview = createDrawingPreview(state.drawingPoints, 0xff0000, 0.6, 0.3);
+    scene.add(state.drawingPreview);
+
     showHint(`🚫 禁止区を作成中... (${state.drawingPoints.length} 点) Enter で確定 / ESC でキャンセル`);
 }
 
@@ -127,20 +161,11 @@ export function addPathPoint(point) {
         scene.remove(state.drawingPreview);
         state.drawingPreview = null;
     }
-    
-    // 画虚线
-    if (state.drawingPoints.length >= 2) {
-        const geometry = new THREE.BufferGeometry().setFromPoints(state.drawingPoints);
-        const material = new THREE.LineDashedMaterial({
-            color: 0x00ff00,
-            dashSize: 0.5,
-            gapSize: 0.3
-        });
-        state.drawingPreview = new THREE.Line(geometry, material);
-        state.drawingPreview.computeLineDistances();
-        scene.add(state.drawingPreview);
-    }
-    
+
+    // 画端点 + 虚线（绿色）
+    state.drawingPreview = createDrawingPreview(state.drawingPoints, 0x00ff00, 0.7, 0.35);
+    scene.add(state.drawingPreview);
+
     showHint(`🟢 通路を作成中... (${state.drawingPoints.length} 点) Enter で確定 / ESC でキャンセル`);
 }
 
@@ -150,23 +175,18 @@ export function finishPath() {
         return;
     }
     
-    // 主路径线（粗一点）
+    // 主路径线（扁平带状，1m 宽）
     const points = state.drawingPoints.map(p => p.clone());
-    points.forEach(p => p.y += 0.05);  // 稍微抬起来
-    
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-        color: 0x00aa00,
-        linewidth: 4   // 注意: WebGL 不一定支持线宽
-    });
-    
-    // 用 TubeGeometry 让路径变粗（更明显）
-    const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0);
-    const tubeGeom = new THREE.TubeGeometry(curve, points.length * 4, 0.15, 8, false);
+    points.forEach(p => p.y += 0.02);  // 稍微抬起来避免和地面 z-fight
+
+    const PATH_WIDTH = 1.0;
+    const tubeGeom = buildRibbonGeometry(points, PATH_WIDTH);
     const tubeMat = new THREE.MeshBasicMaterial({
         color: 0x00aa00,
         transparent: true,
-        opacity: 0.7
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        depthWrite: false
     });
     const tube = new THREE.Mesh(tubeGeom, tubeMat);
     
@@ -192,6 +212,53 @@ export function finishPath() {
     
     console.log(`通路長: ${totalLength.toFixed(1)} m`);
 }
+
+/**
+ * 沿一系列点构造一条扁平带状几何（贴地面）
+ * 每个端点取相邻段方向的平均，在 XZ 平面内作 90° 垂线扩出半宽
+ */
+function buildRibbonGeometry(points, width) {
+    const half = width / 2;
+    const verts = [];
+
+    for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+
+        let dir;
+        if (i === 0) {
+            dir = points[i + 1].clone().sub(p);
+        } else if (i === points.length - 1) {
+            dir = p.clone().sub(points[i - 1]);
+        } else {
+            const d1 = p.clone().sub(points[i - 1]).normalize();
+            const d2 = points[i + 1].clone().sub(p).normalize();
+            dir = d1.add(d2);
+        }
+        dir.y = 0;
+        dir.normalize();
+
+        // XZ 平面内 90° 垂线
+        const perpX = -dir.z * half;
+        const perpZ =  dir.x * half;
+
+        verts.push(p.x - perpX, p.y, p.z - perpZ);
+        verts.push(p.x + perpX, p.y, p.z + perpZ);
+    }
+
+    const indices = [];
+    for (let i = 0; i < points.length - 1; i++) {
+        const a = i * 2;
+        indices.push(a, a + 1, a + 3);
+        indices.push(a, a + 3, a + 2);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+}
+
 
 function addPathArrows(tube, points) {
     const arrows = [];

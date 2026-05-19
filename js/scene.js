@@ -28,17 +28,130 @@ document.body.appendChild(renderer.domElement);
 
 export const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.zoomToCursor = true;   // ⭐ 滚轮缩放朝向鼠标位置
+controls.enableZoom = false;    // ⭐ 关掉内置滚轮，自己处理 (避免靠近 target 时越来越慢)
 
 // ⭐ 鼠标按键映射：
 //   左键 = 不响应（保留给放置/选择）
-//   中键 = 旋转视角
+//   中键 = 自定义（绕鼠标点旋转，不走 OrbitControls）
 //   右键 = 平移
 controls.mouseButtons = {
     LEFT:   null,
-    MIDDLE: THREE.MOUSE.ROTATE,
+    MIDDLE: null,
     RIGHT:  THREE.MOUSE.PAN
 };
+
+// ⭐ 自定义「绕鼠标点旋转」
+//    思路：把 camera.position 和 controls.target 同时绕 pivot 旋转
+//    这样 OrbitControls.lookAt(target) 不会触发额外的硬切，视角连续无跳
+const _pivotNDC = new THREE.Vector2();
+const _pivotRaycaster = new THREE.Raycaster();
+const _pivot = new THREE.Vector3();
+const _rotQuat = new THREE.Quaternion();
+const _rightVec = new THREE.Vector3();
+const _camDir = new THREE.Vector3();
+const _tmpOffset = new THREE.Vector3();
+let _isPivotRotating = false;
+let _lastPX = 0, _lastPY = 0;
+const ROTATE_SPEED = 0.005;
+
+function _siteMeshes() {
+    const targets = [];
+    if (models.siteModel) {
+        models.siteModel.traverse(c => { if (c.isMesh) targets.push(c); });
+    }
+    return targets;
+}
+
+function _rotateAroundPivot(axis, angle) {
+    _rotQuat.setFromAxisAngle(axis, angle);
+
+    _tmpOffset.subVectors(camera.position, _pivot).applyQuaternion(_rotQuat);
+    camera.position.copy(_pivot).add(_tmpOffset);
+
+    _tmpOffset.subVectors(controls.target, _pivot).applyQuaternion(_rotQuat);
+    controls.target.copy(_pivot).add(_tmpOffset);
+}
+
+renderer.domElement.addEventListener('mousedown', (event) => {
+    if (event.button !== 1) return;   // 只处理中键
+    event.preventDefault();
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    _pivotNDC.x =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
+    _pivotNDC.y = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
+    _pivotRaycaster.setFromCamera(_pivotNDC, camera);
+
+    const hits = _pivotRaycaster.intersectObjects(_siteMeshes());
+    if (hits.length > 0) {
+        _pivot.copy(hits[0].point);
+    } else {
+        _pivot.copy(controls.target);   // 没打到地面就退回原 target
+    }
+
+    _lastPX = event.clientX;
+    _lastPY = event.clientY;
+    _isPivotRotating = true;
+});
+
+window.addEventListener('mousemove', (event) => {
+    if (!_isPivotRotating) return;
+
+    const dx = event.clientX - _lastPX;
+    const dy = event.clientY - _lastPY;
+    _lastPX = event.clientX;
+    _lastPY = event.clientY;
+
+    // Yaw: 绕世界 Y 轴
+    _rotateAroundPivot(camera.up, -dx * ROTATE_SPEED);
+
+    // Pitch: 绕 camera 的右方向
+    camera.getWorldDirection(_camDir);
+    _rightVec.crossVectors(_camDir, camera.up).normalize();
+    _rotateAroundPivot(_rightVec, -dy * ROTATE_SPEED);
+});
+
+window.addEventListener('mouseup', (event) => {
+    if (event.button !== 1) return;
+    _isPivotRotating = false;
+});
+
+// ⭐ 自定义滚轮缩放
+//    - 朝鼠标射线打到的世界点移动 camera（zoom-to-cursor）
+//    - 步长 = max(到目标点距离 * STEP_RATIO, MIN_STEP)
+//      MIN_STEP 保证靠近时不会越来越慢
+const _zoomNDC = new THREE.Vector2();
+const _zoomRay = new THREE.Raycaster();
+const _zoomMove = new THREE.Vector3();
+const _zoomTargetPt = new THREE.Vector3();
+const ZOOM_STEP_RATIO = 0.15;
+const ZOOM_MIN_STEP   = 1.5;     // 米
+const ZOOM_MIN_DIST   = 1.5;     // 与目标点的最小距离，防穿透
+
+renderer.domElement.addEventListener('wheel', (event) => {
+    event.preventDefault();
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    _zoomNDC.x =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
+    _zoomNDC.y = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
+    _zoomRay.setFromCamera(_zoomNDC, camera);
+
+    const hits = _zoomRay.intersectObjects(_siteMeshes());
+    if (hits.length > 0) {
+        _zoomTargetPt.copy(hits[0].point);
+    } else {
+        _zoomRay.ray.at(50, _zoomTargetPt);   // 没打到地面，沿光线取 50m 处
+    }
+
+    const dir = event.deltaY > 0 ? -1 : 1;    // 向上滚 = 拉近
+    const distToPt = camera.position.distanceTo(_zoomTargetPt);
+    const step = Math.max(distToPt * ZOOM_STEP_RATIO, ZOOM_MIN_STEP);
+
+    if (dir > 0 && distToPt - step < ZOOM_MIN_DIST) return;   // 防穿透
+
+    _zoomMove.subVectors(_zoomTargetPt, camera.position).normalize().multiplyScalar(dir * step);
+    camera.position.add(_zoomMove);
+    controls.target.add(_zoomMove);   // target 跟着平移，保持视线方向
+}, { passive: false });
 
 
 // ============= 标签渲染器 =============
