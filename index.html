@@ -5,18 +5,112 @@
     <title>Crane Planning App</title>
     <style>
         .tool-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #334155;
+            color: white;
+            border-radius: 8px;
+            font-size: 13px;
+            white-space: nowrap;
+            border: 2px solid transparent;
             transition: all 0.15s;
+            cursor: pointer;
         }
 
         .tool-btn:hover {
-            transform: translateY(-2px);
+            background: #475569;
+            filter: brightness(1.08);
         }
 
         .tool-btn.active {
             background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
-            box-shadow: 0 0 16px rgba(59, 130, 246, 0.6);
-            border: 2px solid #60a5fa;
+            box-shadow: 0 0 14px rgba(59, 130, 246, 0.5);
+            border-color: #60a5fa;
         }
+
+        /* ナビバー区切り線 */
+        .nav-sep {
+            width: 1px;
+            height: 28px;
+            background: #475569;
+            margin: 0 6px;
+            flex-shrink: 0;
+        }
+
+        /* plate-options：toggling 'hidden' で display を切り替える */
+        #plate-options { display: flex; }
+        #plate-options.hidden { display: none; }
+
+        /* ============= 右クリックコンテキストメニュー ============= */
+        #context-menu {
+            position: fixed;
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(10px);
+            border: 1px solid #475569;
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+            padding: 4px 0;
+            min-width: 180px;
+            z-index: 250;
+            user-select: none;
+        }
+
+        .ctx-item {
+            display: block;
+            width: 100%;
+            padding: 7px 14px;
+            text-align: left;
+            color: white;
+            font-size: 13px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .ctx-item:hover:not([disabled]) {
+            background: #334155;
+        }
+
+        .ctx-item[disabled] {
+            color: #64748b;
+            cursor: not-allowed;
+        }
+
+        .ctx-item.danger { color: #fca5a5; }
+        .ctx-item.danger:hover:not([disabled]) { background: #7f1d1d; color: #fff; }
+
+        .ctx-sep {
+            height: 1px;
+            background: #475569;
+            margin: 4px 0;
+        }
+
+        /* ============= 設定モーダル ============= */
+        .settings-tab {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: #334155;
+            font-size: 14px;
+            background: transparent;
+            cursor: pointer;
+            transition: background 0.15s;
+            border: none;
+        }
+        .settings-tab:hover { background: #e2e8f0; }
+        .settings-tab.active {
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+        }
+
+        .settings-pane { display: none; }
+        .settings-pane.active { display: block; }
 
         .plate-size-btn {
             padding: 4px 12px;
@@ -81,7 +175,7 @@
         /* ============= Toast 通知 ============= */
         #toast-container {
             position: fixed;
-            top: 80px;
+            top: 130px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
@@ -132,67 +226,75 @@
 
 <body class="overflow-hidden">
 
-    <!-- ============= 顶部 中央 工具条 ============= -->
-    <div id="top-toolbar"
-        class="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 px-3 py-2 rounded-xl flex flex-wrap gap-2 z-50 shadow-lg">
-        <button id="undo-btn" class="top-btn bg-slate-700 hover:bg-slate-600">↶ 元に戻す</button>
-        <span class="w-px bg-slate-600 mx-1"></span>
-        <button id="save-btn" class="top-btn bg-green-600 hover:bg-green-700">💾 保存</button>
-        <button id="load-btn" class="top-btn bg-blue-600 hover:bg-blue-700">📂 読込</button>
-        <button id="export-json-btn" class="top-btn bg-cyan-600 hover:bg-cyan-700">📤 エクスポート</button>
-        <button id="import-json-btn" class="top-btn bg-cyan-700 hover:bg-cyan-800">📥 インポート</button>
-        <span class="w-px bg-slate-600 mx-1"></span>
-        <button id="screenshot-btn" class="top-btn bg-purple-600 hover:bg-purple-700">📷 3視図出力</button>
-        <button id="report-btn" class="top-btn bg-orange-600 hover:bg-orange-700">📋 計画書作成</button>
-        <span class="w-px bg-slate-600 mx-1"></span>
-        <button id="toggle-center-btn" class="top-btn bg-slate-700 hover:bg-slate-600">⊕ 中心点表示</button>
-    </div>
+    <!-- ============= 顶部 Navi Bar（工具 + アクション） ============= -->
+    <nav id="top-nav"
+        class="fixed top-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-b border-slate-700 z-50 shadow-lg">
+        <div class="flex items-center gap-1 px-3 py-2 flex-wrap">
 
-    <input type="file" id="import-file" accept=".json" hidden>
+            <!-- ツール -->
+            <button class="tool-btn" data-tool="select"><span>👆</span><span>選択</span></button>
+            <button class="tool-btn" data-tool="crane"><span>🏗️</span><span>クレーン</span></button>
+            <button class="tool-btn" data-tool="loadPick"><span>🟢</span><span>起吊</span></button>
+            <button class="tool-btn" data-tool="loadDrop"><span>🔴</span><span>卸荷</span></button>
+            <button class="tool-btn" data-tool="plate"><span>🟨</span><span>敷鉄板</span></button>
+            <button class="tool-btn" data-tool="forbidden"><span>🚫</span><span>禁止区</span></button>
+            <button class="tool-btn" data-tool="path"><span>🟢</span><span>通路</span></button>
+            <button class="tool-btn" data-tool="measure"><span>📏</span><span>測定</span></button>
 
-    <!-- ============= 左侧 工具栏 + 敷板选项 ============= -->
-    <div class="fixed top-24 left-4 flex items-start gap-2 z-50">
-        <div id="tool-palette" class="bg-slate-900/90 p-2 rounded-xl flex flex-col gap-2 shadow-lg">
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="select">
-                <span class="text-2xl">👆</span><span>選択</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="crane">
-                <span class="text-2xl">🏗️</span><span>クレーン</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="loadPick">
-                <span class="text-2xl">🟢</span><span>起吊</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="loadDrop">
-                <span class="text-2xl">🔴</span><span>卸荷</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="plate">
-                <span class="text-2xl">🟨</span><span>敷鉄板</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="forbidden">
-                <span class="text-2xl">🚫</span><span>禁止区</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="path">
-                <span class="text-2xl">🟢</span><span>通路</span>
-            </button>
-            <button class="tool-btn w-16 h-16 bg-slate-700 hover:bg-slate-600 rounded-lg flex flex-col items-center justify-center text-white text-xs" data-tool="measure">
-                <span class="text-2xl">📏</span><span>測定</span>
-            </button>
-        </div>
-
-        <!-- 敷板尺寸（plate 工具激活时显示） -->
-        <div id="plate-options" class="panel hidden">
-            <div class="text-sm font-bold mb-2">敷鉄板サイズ</div>
-            <div class="flex gap-2">
+            <!-- 敷板サイズ（plate 选中时显示） -->
+            <div id="plate-options" class="hidden items-center gap-1 ml-1 pl-2 border-l border-slate-700">
+                <span class="text-xs text-slate-400 mr-1">サイズ:</span>
                 <button class="plate-size-btn active" data-size="1.5x3">1.5×3</button>
                 <button class="plate-size-btn" data-size="2x4">2×4</button>
                 <button class="plate-size-btn" data-size="1x2">1×2</button>
             </div>
+
+            <span class="nav-sep"></span>
+
+            <!-- 編集 -->
+            <button id="undo-btn" class="top-btn bg-slate-700 hover:bg-slate-600">↶ 元に戻す</button>
+
+            <span class="nav-sep"></span>
+
+            <!-- ファイル -->
+            <button id="save-btn" class="top-btn bg-green-600 hover:bg-green-700">💾 保存</button>
+            <button id="load-btn" class="top-btn bg-blue-600 hover:bg-blue-700">📂 読込</button>
+            <button id="export-json-btn" class="top-btn bg-cyan-600 hover:bg-cyan-700">📤 エクスポート</button>
+            <button id="import-json-btn" class="top-btn bg-cyan-700 hover:bg-cyan-800">📥 インポート</button>
+
+            <span class="nav-sep"></span>
+
+            <!-- 出力 -->
+            <button id="screenshot-btn" class="top-btn bg-purple-600 hover:bg-purple-700">📷 3視図</button>
+            <button id="report-btn" class="top-btn bg-orange-600 hover:bg-orange-700">📋 計画書</button>
+
+            <span class="nav-sep"></span>
+
+            <!-- 表示 -->
+            <button id="toggle-center-btn" class="top-btn bg-slate-700 hover:bg-slate-600">⊕ 中心点</button>
+
+            <span class="nav-sep"></span>
+
+            <!-- 設定 -->
+            <button id="settings-btn" class="top-btn bg-slate-700 hover:bg-slate-600">⚙️ 設定</button>
         </div>
-    </div>
+    </nav>
+
+    <input type="file" id="import-file" accept=".json" hidden>
 
     <!-- ============= 右侧 信息 Sidebar ============= -->
     <div id="right-sidebar"
-        class="fixed top-24 right-4 bottom-24 w-72 flex flex-col gap-3 overflow-y-auto z-40 pr-1">
+        class="fixed top-28 right-4 bottom-24 w-72 flex flex-col gap-3 overflow-y-auto z-40 pr-1">
+
+        <!-- 天気予報（今日 / 明日 / 明後日） -->
+        <div id="weather-panel" class="panel">
+            <div class="font-bold mb-1 flex items-center gap-2">
+                🌤️ 天気予報
+                <button id="weather-refresh" title="更新" class="ml-auto text-xs text-slate-400 hover:text-white">🔄</button>
+            </div>
+            <div id="weather-location" class="text-xs text-slate-400 mb-2"></div>
+            <div id="weather-content"></div>
+        </div>
 
         <!-- 总体安全状态（Week 11 新增） -->
         <div id="safety-status-panel" class="panel hidden">
@@ -287,8 +389,8 @@
                 min="0" max="360" step="15" value="0"
                 class="w-full">
 
-            <div class="text-xs text-slate-400 mt-2">
-                💡 R キーでも旋回できます
+            <div class="text-xs text-slate-400 mt-2 leading-relaxed">
+                💡 R キーで旋回 / ドラッグで移動
             </div>
         </div>
 
@@ -327,6 +429,76 @@
     <div id="drawing-hint"
         class="fixed bottom-20 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-6 py-3 rounded-lg hidden z-50">
         <span id="hint-text">操作提示</span>
+    </div>
+
+    <!-- ============= 右クリックコンテキストメニュー ============= -->
+    <div id="context-menu" class="hidden">
+        <button class="ctx-item" data-action="rotate-cw">↻ 15° 旋回</button>
+        <button class="ctx-item" data-action="rotate-ccw">↺ -15° 旋回</button>
+        <button class="ctx-item" data-action="translate">⇔ 平移</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item" data-action="group">🔗 グループ化</button>
+        <button class="ctx-item" data-action="ungroup">🔓 グループ解除</button>
+        <div class="ctx-sep"></div>
+        <button class="ctx-item danger" data-action="delete">🗑 削除</button>
+    </div>
+
+    <!-- ============= 設定モーダル ============= -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/50 z-[110] hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-2xl w-[820px] max-h-[88vh] flex flex-col">
+            <!-- ヘッダ -->
+            <div class="border-b p-4 flex items-center justify-between">
+                <h2 class="text-xl font-bold">⚙️ 設定</h2>
+                <button id="settings-close" class="text-2xl text-slate-500 hover:text-slate-800 leading-none">×</button>
+            </div>
+            <!-- ボディ -->
+            <div class="flex flex-1 overflow-hidden">
+                <aside class="w-44 bg-slate-50 border-r p-3 overflow-y-auto">
+                    <nav class="space-y-1">
+                        <button class="settings-tab active" data-tab="location">📍 地点</button>
+                    </nav>
+                </aside>
+                <div class="flex-1 p-6 overflow-y-auto">
+
+                    <!-- 地点設定 -->
+                    <section id="settings-pane-location" class="settings-pane active">
+                        <h3 class="text-xl font-bold mb-4">📍 地点設定</h3>
+                        <p class="text-sm text-slate-500 mb-4">現場の所在地情報を登録します。計画書出力時の初期値として使用されます。</p>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-sm block mb-1 font-medium">現場名</label>
+                                <input id="set-site-name" class="w-full border p-2 rounded" placeholder="〇〇現場">
+                            </div>
+                            <div>
+                                <label class="text-sm block mb-1 font-medium">住所</label>
+                                <input id="set-address" class="w-full border p-2 rounded" placeholder="東京都〇〇区〇〇 1-2-3">
+                            </div>
+                            <div class="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                                <div>
+                                    <label class="text-sm block mb-1 font-medium">緯度 (lat)</label>
+                                    <input id="set-lat" type="number" step="0.000001" class="w-full border p-2 rounded" placeholder="35.6895">
+                                </div>
+                                <div>
+                                    <label class="text-sm block mb-1 font-medium">経度 (lng)</label>
+                                    <input id="set-lng" type="number" step="0.000001" class="w-full border p-2 rounded" placeholder="139.6917">
+                                </div>
+                                <button id="set-locate" class="px-3 py-2 bg-cyan-600 text-white rounded text-sm whitespace-nowrap hover:bg-cyan-700">📍 現在地</button>
+                            </div>
+                            <div>
+                                <label class="text-sm block mb-1 font-medium">備考</label>
+                                <textarea id="set-notes" rows="3" class="w-full border p-2 rounded" placeholder="搬入経路、地盤条件、近隣注意事項など"></textarea>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+            </div>
+            <!-- フッタ -->
+            <div class="border-t p-3 flex gap-2 justify-end bg-slate-50 rounded-b-lg">
+                <button id="settings-cancel" class="px-4 py-2 bg-gray-400 hover:bg-gray-500 text-white rounded">キャンセル</button>
+                <button id="settings-save"   class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">💾 保存</button>
+            </div>
+        </div>
     </div>
 
     <!-- ============= 加载中 ============= -->

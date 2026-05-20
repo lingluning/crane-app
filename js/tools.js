@@ -353,39 +353,152 @@ export function placePlate(point) {
 }
 
 // ============= 选择 / 高亮 =============
+// 単一クリック選択：交点があれば setSelection、なければクリア
 export function handleSelect() {
     const intersects = raycaster.intersectObjects(state.placedObjects, true);
-    
-    if (state.selectedObject) {
-        clearHighlight(state.selectedObject);
-        state.selectedObject = null;
-    }
-    
-    if (intersects.length > 0) {
-        const root = findRootObject(intersects[0].object);
-        if (root) {
-            state.selectedObject = root;
-            applyHighlight(state.selectedObject);
-            console.log('选中了:', state.selectedObject.userData.type);
-        }
-    }
-    
-    showInfo(state.selectedObject);
 
-    // 显示/隐藏控制面板
+    if (intersects.length === 0) {
+        setSelection([]);
+        return;
+    }
+
+    const root = findRootObject(intersects[0].object);
+    if (!root) {
+        setSelection([]);
+        return;
+    }
+
+    // 敷鉄板がグループに属するなら、グループ全員を選択
+    setSelection(expandToGroup(root), root);
+}
+
+// Ctrl+左クリックで任意のオブジェクトを選択に追加 / 解除（グループ単位）
+export function toggleSelection(obj) {
+    if (!obj) return;
+
+    const current = state.selectedObjects.slice();
+    const expanded = expandToGroup(obj);
+    const alreadyIn = expanded.some(o => current.includes(o));
+
+    if (alreadyIn) {
+        const remaining = current.filter(o => !expanded.includes(o));
+        setSelection(remaining, remaining[0] || null);
+    } else {
+        const merged = [...current, ...expanded];
+        const unique = [...new Set(merged)];
+        setSelection(unique, obj);
+    }
+}
+
+// groupId を持つオブジェクトは、同 ID の全メンバーを返す（型不問）
+export function expandToGroup(obj) {
+    if (obj.userData.groupId) {
+        return state.placedObjects.filter(o => o.userData.groupId === obj.userData.groupId);
+    }
+    return [obj];
+}
+
+// 全選択を入れ替え（旧ハイライト消去 → 新ハイライト + UI 更新）
+export function setSelection(objects, primary = null) {
+    state.selectedObjects.forEach(o => clearHighlight(o));
+
+    state.selectedObjects = objects.slice();
+    state.selectedObject = primary || objects[0] || null;
+
+    state.selectedObjects.forEach(o => applyHighlight(o));
+
+    showInfo(state.selectedObject);
+    updateCraneControlPanel();
+}
+
+function updateCraneControlPanel() {
     const ctrl = document.getElementById('crane-control');
-    if (state.selectedObject && state.selectedObject.userData.type === 'crane') {
+    const obj = state.selectedObject;
+    const isSingleCrane =
+        obj && obj.userData.type === 'crane' && state.selectedObjects.length === 1;
+
+    if (isSingleCrane) {
         ctrl.classList.remove('hidden');
-        const r = state.selectedObject.userData.workRadius || 10;
+        const r = obj.userData.workRadius || 10;
         document.getElementById('radius-slider').value = r;
         document.getElementById('radius-value').textContent = r.toFixed(1);
-        
-        const rot = (state.selectedObject.rotation.y * 180 / Math.PI) % 360;
+        const rot = (obj.rotation.y * 180 / Math.PI) % 360;
         document.getElementById('rotation-slider').value = rot;
         document.getElementById('rotation-value').textContent = rot.toFixed(0);
     } else {
         ctrl.classList.add('hidden');
     }
+}
+
+// グループ ID 発行
+let _nextGroupSeq = 1;
+function generateGroupId() {
+    return `g_${Date.now()}_${_nextGroupSeq++}`;
+}
+
+// 現在の選択にある全オブジェクトを 1 つのグループにまとめる（2 個以上のとき）
+// 既に同一グループの場合は何もしない（false を返す）
+export function formGroupFromSelection() {
+    const sel = state.selectedObjects;
+    if (sel.length < 2) return false;
+
+    const ids = new Set(sel.map(o => o.userData.groupId));
+    if (ids.size === 1 && !ids.has(undefined)) return false;   // 既に同一グループ
+
+    const gid = generateGroupId();
+    sel.forEach(o => { o.userData.groupId = gid; });
+    return true;
+}
+
+// 選択中のオブジェクトから groupId を外す
+export function ungroupSelection() {
+    let changed = false;
+    state.selectedObjects.forEach(o => {
+        if (o.userData.groupId) {
+            delete o.userData.groupId;
+            changed = true;
+        }
+    });
+    return changed;
+}
+
+// 選択を回転：単体は自身周り、複数は選択全体の重心を 1 点として剛体回転
+//   - グループ化後は同じ centroid を毎回再計算するため自然に「1 つの中心点」周り
+//   - クレーンは moveCrane 経由で中心マーカー・作業半径円も同期させる
+//   - 位置の回転方向を three.js の rotation.y（+X → -Z）と一致させる：
+//       x' = cx + dx·cosθ + dz·sinθ
+//       z' = cz − dx·sinθ + dz·cosθ
+export function rotateSelection(angleRad) {
+    const sel = state.selectedObjects;
+    if (sel.length === 0) return;
+
+    if (sel.length === 1) {
+        sel[0].rotation.y += angleRad;
+        return;
+    }
+
+    let cx = 0, cz = 0;
+    sel.forEach(o => { cx += o.position.x; cz += o.position.z; });
+    cx /= sel.length;
+    cz /= sel.length;
+
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    sel.forEach(o => {
+        const dx = o.position.x - cx;
+        const dz = o.position.z - cz;
+        const newX = cx + dx * cos + dz * sin;
+        const newZ = cz - dx * sin + dz * cos;
+
+        if (o.userData.type === 'crane') {
+            moveCrane(o, newX - o.position.x, newZ - o.position.z);
+        } else {
+            o.position.x = newX;
+            o.position.z = newZ;
+        }
+        o.rotation.y += angleRad;
+    });
 }
 
 export function findRootObject(mesh) {
@@ -434,14 +547,22 @@ export function showInfo(obj) {
 
     const typeNames = {
         crane: '🏗️ クレーン',
-        load: '📦 吊荷',
+        loadPick: '🟢 起吊',
+        loadDrop: '🔴 卸荷',
         plate: '🟨 敷鉄板'
     };
 
+    const selCount = state.selectedObjects.length;
+    const grouped = !!obj.userData.groupId;
+    const multiInfo = selCount > 1
+        ? `<div class="text-xs text-yellow-300 mt-1">${selCount} 個を選択中${grouped ? '（グループ）' : ''}</div>`
+        : (grouped ? `<div class="text-xs text-yellow-300 mt-1">グループ所属</div>` : '');
+
     content.innerHTML = `
-        <div>種類: ${typeNames[obj.userData.type]}</div>
+        <div>種類: ${typeNames[obj.userData.type] || obj.userData.type}</div>
         <div>位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}</div>
-        <div class="text-xs text-slate-400 mt-2">DEL キーで削除</div>
+        ${multiInfo}
+        <div class="text-xs text-slate-400 mt-2">Ctrl+クリックで多選 / 右クリックでメニュー</div>
     `;
     panel.classList.remove('hidden');
 }
@@ -479,6 +600,29 @@ export function updateCraneRadius(crane, radiusMeters) {
 
     crane.userData.radiusCircle = newCircle;
     crane.userData.workRadius = radiusMeters;
+}
+
+// 平移选中的吊车（同步移动中心点 + 重建作业半径圆）
+export function moveCrane(crane, dx, dz) {
+    crane.position.x += dx;
+    crane.position.z += dz;
+
+    if (crane.userData.centerMarker) {
+        crane.userData.centerMarker.position.x += dx;
+        crane.userData.centerMarker.position.z += dz;
+    }
+
+    if (crane.userData.radiusCircle) {
+        scene.remove(crane.userData.radiusCircle);
+        const newCircle = createTerrainFollowingCircle(
+            crane.position,
+            crane.userData.workRadius || 10
+        );
+        scene.add(newCircle);
+        crane.userData.radiusCircle = newCircle;
+    }
+
+    showInfo(crane);
 }
 
 // 绕中心采样一圈点，每点向下射线打地形拿到真实 Y，

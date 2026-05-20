@@ -19,6 +19,7 @@ export function serialize() {
                 z: obj.position.z
             },
             rotation: obj.rotation.y,
+            ...(obj.userData.groupId && { groupId: obj.userData.groupId }),
             ...(obj.userData.type === 'crane' && {
                 workRadius: obj.userData.workRadius || 10,
                 model: 'TADANO_GR-250N'
@@ -40,50 +41,36 @@ export function deserialize(data) {
     });
     state.placedObjects.length = 0;
     state.selectedObject = null;
+    state.selectedObjects = [];
     
     // 重建
     data.objects.forEach(item => {
         const point = new THREE.Vector3(item.position.x, item.position.y, item.position.z);
-        
+
         switch (item.type) {
             case 'crane':
                 placeCrane(point);
-                const lastCrane = state.placedObjects[state.placedObjects.length - 1];
-                if (lastCrane) {
-                    lastCrane.rotation.y = item.rotation || 0;
-                    if (item.workRadius) {
-                        updateCraneRadius(lastCrane, item.workRadius);
-                    }
-                }
                 break;
-                
             case 'loadPick':
-            case 'load':   // 老存档兼容：默认当作起吊点
+            case 'load':   // 旧存档兼容
                 placeLoadPick(point);
-                {
-                    const last = state.placedObjects[state.placedObjects.length - 1];
-                    if (last) last.rotation.y = item.rotation || 0;
-                }
                 break;
-
             case 'loadDrop':
                 placeLoadDrop(point);
-                {
-                    const last = state.placedObjects[state.placedObjects.length - 1];
-                    if (last) last.rotation.y = item.rotation || 0;
-                }
                 break;
-                
             case 'plate':
-                if (item.size) {
-                    state.currentPlateSize = item.size;
-                }
+                if (item.size) state.currentPlateSize = item.size;
                 placePlate(point);
-                const lastPlate = state.placedObjects[state.placedObjects.length - 1];
-                if (lastPlate) {
-                    lastPlate.rotation.y = item.rotation || 0;
-                }
                 break;
+        }
+
+        const last = state.placedObjects[state.placedObjects.length - 1];
+        if (!last) return;
+
+        last.rotation.y = item.rotation || 0;
+        if (item.groupId) last.userData.groupId = item.groupId;
+        if (item.type === 'crane' && item.workRadius) {
+            updateCraneRadius(last, item.workRadius);
         }
     });
     

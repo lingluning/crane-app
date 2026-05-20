@@ -3,6 +3,7 @@ export const state = {
     placedObjects: [],
     currentTool: 'crane',
     selectedObject: null,
+    selectedObjects: [],     // 多選用（Ctrl+左クリックで敷鉄板を追加 / プレート group 全員）
     ghost: null,
     currentPlateSize: { x: 1.5, z: 3 },
     drawingPoints: [],        // 正在画的点

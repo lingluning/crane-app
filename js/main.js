@@ -8,7 +8,9 @@ import {
     placeCrane, placeLoadPick, placeLoadDrop, placePlate,  // ⭐
     handleSelect, snapToGrid, updateCounters,
     updateCraneRadius, updateCraneButton,
-    showToast, removeObjectFully
+    showToast, removeObjectFully, moveCrane,
+    toggleSelection, rotateSelection, formGroupFromSelection,
+    ungroupSelection, setSelection, findRootObject
 } from './tools.js';
 
 import { serialize, deserialize, startAutoSave } from './persistence.js';
@@ -35,6 +37,7 @@ import { exportProjectJSON, importProjectJSON } from './export.js';
 
 import { updateSafetyDisplay } from './safety-display.js';
 import { getCrane, getMaxRadius } from './crane-database.js';
+import { updateWeather, attachWeatherRefresh } from './weather.js';
 
 
 
@@ -73,13 +76,34 @@ window.addEventListener('click', (event) => {
     // ⭐ 只处理 3D canvas 上的点击，避免 UI 按钮误触发放置/绘制
     if (event.target.tagName !== 'CANVAS') return;
 
+    // 平移モード中のクリックは確定
+    if (translateState.active) {
+        commitTranslate();
+        return;
+    }
+
+    // 拖拽刚结束的 click 不应触发选中/放置
+    if (suppressNextClick) {
+        suppressNextClick = false;
+        return;
+    }
+
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
     raycaster.setFromCamera(mouse, camera);
 
-    // 选择模式直接处理（不需要打到地面）
+    // 选择模式
     if (state.currentTool === 'select') {
+        // Ctrl/⌘ + 左クリック：敷鉄板の多選トグル
+        if (event.ctrlKey || event.metaKey) {
+            const hits = raycaster.intersectObjects(state.placedObjects, true);
+            if (hits.length > 0) {
+                const root = findRootObject(hits[0].object);
+                if (root) toggleSelection(root);
+            }
+            return;
+        }
         handleSelect();
         return;
     }
@@ -101,10 +125,279 @@ window.addEventListener('click', (event) => {
     }
 });
 
+// ============= 左键拖拽：移动选中的吊车 =============
+// 在「選択」工具下按住吊车拖动，按地面射线投影同步吊车位置（与摄像机角度无关）。
+const DRAG_THRESHOLD_PX = 4;
+const dragState = {
+    armed: false,
+    dragging: false,
+    crane: null,
+    offsetX: 0,
+    offsetZ: 0,
+    startX: 0,
+    startY: 0
+};
+let suppressNextClick = false;
+
+window.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    if (event.target.tagName !== 'CANVAS') return;
+    if (state.currentTool !== 'select') return;
+    if (event.ctrlKey || event.metaKey) return;   // Ctrl+左クリックは多選用：ドラッグ無効
+    if (translateState.active) return;             // 平移モード中はドラッグ無効
+
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    const hits = raycaster.intersectObjects(state.placedObjects, true);
+    if (hits.length === 0) return;
+
+    let root = hits[0].object;
+    while (root && !state.placedObjects.includes(root)) root = root.parent;
+    if (!root || root.userData.type !== 'crane') return;
+
+    const groundHits = getGroundIntersect();
+    if (groundHits.length === 0) return;
+    const gp = groundHits[0].point;
+
+    // 先选中吊车（弹出半径/旋转面板）
+    if (state.selectedObject !== root) handleSelect();
+
+    dragState.armed = true;
+    dragState.dragging = false;
+    dragState.crane = root;
+    dragState.offsetX = root.position.x - gp.x;
+    dragState.offsetZ = root.position.z - gp.z;
+    dragState.startX = event.clientX;
+    dragState.startY = event.clientY;
+});
+
+window.addEventListener('mousemove', (event) => {
+    if (!dragState.armed) return;
+
+    if (!dragState.dragging) {
+        const ddx = event.clientX - dragState.startX;
+        const ddy = event.clientY - dragState.startY;
+        if (Math.hypot(ddx, ddy) < DRAG_THRESHOLD_PX) return;
+        dragState.dragging = true;
+        document.body.style.cursor = 'grabbing';
+    }
+
+    // 上面通用 mousemove 已更新 mouse + raycaster
+    const groundHits = getGroundIntersect();
+    if (groundHits.length === 0) return;
+    const p = groundHits[0].point;
+
+    const crane = dragState.crane;
+    const targetX = p.x + dragState.offsetX;
+    const targetZ = p.z + dragState.offsetZ;
+    moveCrane(crane, targetX - crane.position.x, targetZ - crane.position.z);
+});
+
+window.addEventListener('mouseup', (event) => {
+    if (event.button !== 0) return;
+    if (!dragState.armed) return;
+
+    if (dragState.dragging) {
+        suppressNextClick = true;
+        document.body.style.cursor = '';
+    }
+    dragState.armed = false;
+    dragState.dragging = false;
+    dragState.crane = null;
+});
+
+// ============= 右クリックコンテキストメニュー =============
+const ROTATE_STEP_RAD = Math.PI / 12;   // 15°
+
+function allInSameGroup(sel) {
+    if (sel.length === 0) return true;
+    const ids = new Set(sel.map(o => o.userData.groupId));
+    return ids.size === 1 && !ids.has(undefined);
+}
+
+function openContextMenu(x, y) {
+    const menu = document.getElementById('context-menu');
+    const sel = state.selectedObjects;
+
+    const canGroup = sel.length >= 2 && !allInSameGroup(sel);
+    const canUngroup = sel.some(o => o.userData.groupId);
+
+    menu.querySelectorAll('.ctx-item').forEach(item => {
+        const action = item.dataset.action;
+        let enabled = sel.length > 0;
+        if (action === 'group') enabled = canGroup;
+        if (action === 'ungroup') enabled = canUngroup;
+        item.toggleAttribute('disabled', !enabled);
+    });
+
+    // 一旦表示してサイズ計測 → はみ出し補正
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+    menu.classList.remove('hidden');
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth)  menu.style.left = `${x - rect.width}px`;
+    if (rect.bottom > window.innerHeight) menu.style.top  = `${y - rect.height}px`;
+}
+
+function closeContextMenu() {
+    document.getElementById('context-menu').classList.add('hidden');
+}
+
+window.addEventListener('contextmenu', (event) => {
+    if (event.target.tagName !== 'CANVAS') return;
+
+    // Mac の Ctrl+左クリックは OS が「右クリック」として contextmenu を発火するが、
+    // ユーザーの意図は多選なのでメニューを開かない（click ハンドラ側で toggleSelection）。
+    if (event.ctrlKey) {
+        event.preventDefault();
+        return;
+    }
+
+    // 平移モード中の右クリックは平移取消
+    if (translateState.active) {
+        event.preventDefault();
+        cancelTranslate();
+        return;
+    }
+
+    if (state.currentTool !== 'select') return;
+    if (state.selectedObjects.length === 0) return;   // 選択なしならパン(OrbitControls)に任せる
+
+    event.preventDefault();
+    openContextMenu(event.clientX, event.clientY);
+});
+
+// メニュー外を左クリックしたら閉じる（メニュー内クリックはそのまま）
+window.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    const menu = document.getElementById('context-menu');
+    if (menu.classList.contains('hidden')) return;
+    if (!menu.contains(event.target)) closeContextMenu();
+});
+
+// メニュー項目の動作
+document.getElementById('context-menu').addEventListener('click', (event) => {
+    const btn = event.target.closest('.ctx-item');
+    if (!btn || btn.hasAttribute('disabled')) return;
+
+    switch (btn.dataset.action) {
+        case 'rotate-cw':  rotateSelection( ROTATE_STEP_RAD); break;
+        case 'rotate-ccw': rotateSelection(-ROTATE_STEP_RAD); break;
+        case 'translate':  startTranslate(); break;
+        case 'group': {
+            const formed = formGroupFromSelection();
+            if (formed) showToast(`${state.selectedObjects.length} 個をグループ化しました`, 'success');
+            setSelection(state.selectedObjects.slice(), state.selectedObject);   // info-panel 更新
+            break;
+        }
+        case 'ungroup': {
+            const changed = ungroupSelection();
+            if (changed) showToast('グループ解除しました', 'info');
+            setSelection(state.selectedObjects.slice(), state.selectedObject);
+            break;
+        }
+        case 'delete': {
+            state.selectedObjects.slice().forEach(o => removeObjectFully(o));
+            setSelection([]);
+            updateCounters();
+            updateCraneButton();
+            break;
+        }
+    }
+    closeContextMenu();
+});
+
+// ============= 平移モード（メニューから起動。マウスで追従、クリック確定、Esc 取消） =============
+const translateState = {
+    active: false,
+    startX: 0, startZ: 0,
+    originals: []   // [{obj, x, z}]
+};
+
+function startTranslate() {
+    if (state.selectedObjects.length === 0) return;
+    const groundHits = getGroundIntersect();
+    if (groundHits.length === 0) {
+        showToast('カーソルを 3D ビュー上に置いてから実行してください', 'warning');
+        return;
+    }
+    const start = groundHits[0].point;
+
+    translateState.active = true;
+    translateState.startX = start.x;
+    translateState.startZ = start.z;
+    translateState.originals = state.selectedObjects.map(obj => ({
+        obj, x: obj.position.x, z: obj.position.z
+    }));
+    document.body.style.cursor = 'move';
+    showToast('マウスで移動 / 左クリックで確定 / Esc で取消', 'info', 3000);
+}
+
+function applyTranslate() {
+    if (!translateState.active) return;
+    const groundHits = getGroundIntersect();
+    if (groundHits.length === 0) return;
+    const p = groundHits[0].point;
+    const dx = p.x - translateState.startX;
+    const dz = p.z - translateState.startZ;
+
+    translateState.originals.forEach(({obj, x, z}) => {
+        const tx = x + dx, tz = z + dz;
+        if (obj.userData.type === 'crane') {
+            moveCrane(obj, tx - obj.position.x, tz - obj.position.z);
+        } else {
+            obj.position.x = tx;
+            obj.position.z = tz;
+        }
+    });
+}
+
+function commitTranslate() {
+    translateState.active = false;
+    translateState.originals = [];
+    document.body.style.cursor = '';
+}
+
+function cancelTranslate() {
+    if (!translateState.active) return;
+    translateState.originals.forEach(({obj, x, z}) => {
+        if (obj.userData.type === 'crane') {
+            moveCrane(obj, x - obj.position.x, z - obj.position.z);
+        } else {
+            obj.position.x = x;
+            obj.position.z = z;
+        }
+    });
+    translateState.active = false;
+    translateState.originals = [];
+    document.body.style.cursor = '';
+}
+
+// 平移中の追従 / 確定（既存の mousemove / click より後に登録するため、新規ハンドラで処理）
+window.addEventListener('mousemove', () => {
+    if (translateState.active) applyTranslate();
+});
+
 // ============= 键盘 =============
 window.addEventListener('keydown', (event) => {
+    // スペースキーで選択モードへ（入力中は除く）
+    if (event.key === ' ' || event.code === 'Space') {
+        const tag = event.target && event.target.tagName;
+        if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+            event.preventDefault();
+            selectTool('select');
+            return;
+        }
+    }
+
     if (event.key === 'Escape') {
-        if (state.drawingPoints.length > 0) {
+        if (translateState.active) {
+            cancelTranslate();
+        } else if (!document.getElementById('context-menu').classList.contains('hidden')) {
+            closeContextMenu();
+        } else if (state.drawingPoints.length > 0) {
             cancelDrawing();   // ⭐ 优先取消正在画的
         } else if (state.currentTool === 'measure') {
             cancelMeasure();   // ⭐ 新增
@@ -124,9 +417,9 @@ window.addEventListener('keydown', (event) => {
     }
 
     if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (state.selectedObject) {
-            removeObjectFully(state.selectedObject);
-            state.selectedObject = null;
+        if (state.selectedObjects.length > 0) {
+            state.selectedObjects.slice().forEach(obj => removeObjectFully(obj));
+            setSelection([]);
             updateCounters();
             updateCraneButton();
         }
@@ -134,9 +427,8 @@ window.addEventListener('keydown', (event) => {
 
 
     if (event.key === 'r' || event.key === 'R') {
-        if (state.selectedObject) {
-            state.selectedObject.rotation.y += Math.PI / 18;
-            console.log('旋转中:', state.selectedObject.userData.type);
+        if (state.selectedObjects.length > 0) {
+            rotateSelection(Math.PI / 18);   // 10°
         }
     }
 });
@@ -153,7 +445,10 @@ document.getElementById('undo-btn').addEventListener('click', () => {
     if (state.placedObjects.length === 0) return;
 
     const last = state.placedObjects[state.placedObjects.length - 1];
-    if (state.selectedObject === last) state.selectedObject = null;
+    if (state.selectedObjects.includes(last)) {
+        const remaining = state.selectedObjects.filter(o => o !== last);
+        setSelection(remaining, remaining[0] || null);
+    }
     removeObjectFully(last);
     updateCounters();
     updateCraneButton();
@@ -375,7 +670,103 @@ syncRadiusSliderUpperBound();
 
 
 
+// ============= 設定モーダル =============
+const SETTINGS_KEY = 'crane_app_settings';
+
+function defaultSettings() {
+    return {
+        location: { siteName: '', address: '', lat: null, lng: null, notes: '' }
+    };
+}
+
+function loadSettings() {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return defaultSettings();
+    try {
+        const parsed = JSON.parse(raw);
+        return { ...defaultSettings(), ...parsed, location: { ...defaultSettings().location, ...(parsed.location || {}) } };
+    } catch {
+        return defaultSettings();
+    }
+}
+
+function saveSettings(s) {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+}
+
+function openSettingsModal() {
+    const s = loadSettings();
+    document.getElementById('set-site-name').value = s.location.siteName || '';
+    document.getElementById('set-address').value   = s.location.address  || '';
+    document.getElementById('set-lat').value       = s.location.lat ?? '';
+    document.getElementById('set-lng').value       = s.location.lng ?? '';
+    document.getElementById('set-notes').value     = s.location.notes || '';
+    document.getElementById('settings-modal').classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+    document.getElementById('settings-modal').classList.add('hidden');
+}
+
+document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+document.getElementById('settings-close').addEventListener('click', closeSettingsModal);
+document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
+
+// 背景クリックで閉じる
+document.getElementById('settings-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'settings-modal') closeSettingsModal();
+});
+
+document.getElementById('settings-save').addEventListener('click', () => {
+    const lat = parseFloat(document.getElementById('set-lat').value);
+    const lng = parseFloat(document.getElementById('set-lng').value);
+    const s = loadSettings();
+    s.location = {
+        siteName: document.getElementById('set-site-name').value.trim(),
+        address:  document.getElementById('set-address').value.trim(),
+        lat: Number.isFinite(lat) ? lat : null,
+        lng: Number.isFinite(lng) ? lng : null,
+        notes:    document.getElementById('set-notes').value.trim()
+    };
+    saveSettings(s);
+    showToast('設定を保存しました', 'success');
+    closeSettingsModal();
+    updateWeather();
+});
+
+// 現在地取得
+document.getElementById('set-locate').addEventListener('click', () => {
+    if (!navigator.geolocation) {
+        showToast('このブラウザは位置情報をサポートしていません', 'warning');
+        return;
+    }
+    showToast('現在地を取得中…', 'info', 1500);
+    navigator.geolocation.getCurrentPosition(
+        pos => {
+            document.getElementById('set-lat').value = pos.coords.latitude.toFixed(6);
+            document.getElementById('set-lng').value = pos.coords.longitude.toFixed(6);
+            showToast('現在地を取得しました', 'success');
+        },
+        err => showToast(`位置情報の取得に失敗: ${err.message}`, 'error', 3500)
+    );
+});
+
+// サイドバーのタブ切替（将来カテゴリを増やすときに有効）
+document.querySelectorAll('.settings-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t === tab));
+        document.querySelectorAll('.settings-pane').forEach(p => {
+            p.classList.toggle('active', p.id === `settings-pane-${target}`);
+        });
+    });
+});
+
 // ============= 启动 =============
+attachWeatherRefresh();
+updateWeather();
+setInterval(updateWeather, 30 * 60 * 1000);   // 30 分ごとに自動更新
+
 loadModels(() => {
     console.log('🎉 全部加载完成');
 });
