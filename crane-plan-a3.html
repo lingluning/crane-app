@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="UTF-8">
+<title>クレーン作業計画書 · CF-19 · CAD Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>/* cyrillic-ext */
+/* cyrillic */
+/* greek-ext */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek-ext */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek-ext */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek-ext */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+/* cyrillic-ext */
+/* cyrillic */
+/* greek */
+/* vietnamese */
+/* latin-ext */
+/* latin */
+</style>
+<style>
+@page { size: A3 landscape; margin: 6mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', 'Hiragino Kaku Gothic Pro', 'Yu Gothic', system-ui, sans-serif;
+  font-size: 11px;
+  color: #1f2328;
+  line-height: 1.35;
+  background: #e5e7e9;
+  padding-top: 44px;
+  letter-spacing: 0.005em;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-feature-settings: 'tnum' 1, 'cv01' 1; }
+
+/* ─── design tokens (CAD Pro · light) ─── */
+:root {
+  --bg:        #e5e7e9;
+  --paper:     #ffffff;
+  --chrome:    #fafaf8;
+  --chrome2:   #ffffff;
+  --border:    #e1e1dc;
+  --border2:   #d0d0c9;
+  --rule:      #7c8086;   /* major rules — between sections */
+  --rule-soft: #c0c4c9;   /* soft rules — within cells */
+  --label-bg:  #eef1f5;
+  --label-bg2: #dfe3e8;
+  --label-ink: #3a3d42;
+  --ink:       #1a1a1a;
+  --text-dim:  #5f6770;
+  --text-faint:#9aa0a8;
+  --accent:    #2563eb;
+  --accent-soft: #e8f0fe;
+  --ok:        #16a34a;
+  --warn:      #d97706;
+  --danger:    #dc2626;
+}
+
+/* ============ Toolbar (CAD Pro chrome) ============ */
+#toolbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 44px;
+  background: #1c1f23;
+  color: #dbe1e8;
+  display: flex; align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  z-index: 1000;
+  border-bottom: 1px solid #2c3137;
+  font-size: 12px;
+}
+#toolbar .brand-mark {
+  width: 22px; height: 22px; border-radius: 4px;
+  background: var(--accent); color: white;
+  display: grid; place-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: -0.04em;
+}
+#toolbar .title { font-weight: 600; font-size: 13px; color: #f0f3f7; }
+#toolbar .badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid #373d44;
+  color: #8a939d;
+  letter-spacing: 0.04em;
+}
+#toolbar .badge.ok {
+  color: #34d399;
+  border-color: #1f5132;
+  background: rgba(52, 211, 153, 0.08);
+}
+#toolbar .spacer { flex: 1; }
+#toolbar button {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 10px;
+  border: 1px solid #2c3137;
+  background: #22262b;
+  color: #dbe1e8;
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+#toolbar button:hover { background: #2c3137; border-color: #454c54; }
+#toolbar button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+#toolbar button.primary:hover { filter: brightness(1.08); }
+#toolbar button.danger {
+  background: transparent;
+  border-color: #2c3137;
+  color: #f87171;
+}
+#toolbar button.danger:hover { background: rgba(248, 113, 113, 0.08); border-color: #f87171; }
+#toolbar svg { flex-shrink: 0; }
+
+#save-status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: #8a939d;
+  letter-spacing: 0.02em;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+#save-status.saved { color: #34d399; }
+#save-status .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor;
+}
+
+/* ============ Ruler / file bar ============ */
+#ruler {
+  position: fixed;
+  top: 44px; left: 0; right: 0;
+  height: 28px;
+  background: var(--chrome2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 14px;
+  gap: 14px;
+  z-index: 999;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+#ruler .xls-tag {
+  background: #1d6f42; color: #fff;
+  padding: 1px 6px; border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.06em;
+}
+#ruler .path { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; }
+#ruler .path .sep { color: var(--text-faint); margin: 0 4px; }
+#ruler .meta {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+  color: var(--text-faint);
+}
+#ruler .meta .ok { color: var(--ok); }
+
+body { padding-top: 72px; }
+
+/* ============ Page (A3 portrait) ============ */
+.page-wrap {
+  display: flex; justify-content: center;
+  padding: 24px 24px 40px;
+  overflow-x: hidden;   /* 横スクロール禁止 — ページは JS で zoom 縮小 */
+}
+.page {
+  background: var(--paper);
+  width: 420mm;
+  height: 297mm;        /* fixed height so left/right columns match */
+  flex-shrink: 0;       /* keep A3 landscape width even in small viewports */
+  margin: 0 auto;
+  padding: 9mm 10mm 8mm;
+  box-shadow: 0 6px 28px rgba(0,0,0,0.10);
+  border: 1px solid var(--rule);
+  display: flex;
+  gap: 7mm;
+  position: relative;
+  overflow: hidden;
+}
+.page::before {
+  /* corner registration mark */
+  content: 'CF-19 · A3 · 1/1';
+  position: absolute;
+  bottom: 3mm; right: 9mm;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.12em;
+}
+.col-left,
+.col-right {
+  flex: 1 1 0;          /* force equal width */
+  width: 0;             /* with flex:1 1 0, both columns get exactly 50% */
+  min-width: 0;
+  height: 100%;         /* force equal height */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/* ============ Document title band ============ */
+.title-band {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  margin-bottom: 7px;
+}
+.title-band .stamp {
+  width: 88px;
+  background: var(--label-bg);
+  border-right: 1px solid var(--rule-soft);
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  padding: 6px;
+  text-align: center;
+}
+.title-band .stamp .form-no {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px; color: var(--label-ink);
+  letter-spacing: 0.12em;
+}
+.title-band .stamp .form-no strong { color: var(--ink); font-weight: 600; }
+.title-band .stamp .ver {
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; color: var(--text-faint);
+  letter-spacing: 0.06em;
+}
+.title-band .title-main {
+  flex: 1;
+  padding: 8px 14px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.title-band .ja {
+  font-size: 20px; font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--ink);
+  line-height: 1;
+}
+.title-band .en {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--label-ink);
+  margin-top: 5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.title-band .meta {
+  display: flex; flex-direction: column;
+  justify-content: center;
+  padding: 7px 14px;
+  gap: 5px;
+  border-left: 1px solid var(--rule-soft);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: var(--label-ink);
+  min-width: 170px;
+}
+.title-band .meta .row { display: flex; gap: 6px; }
+.title-band .meta .k { color: var(--text-faint); }
+.title-band .meta .v { color: var(--ink); }
+
+/* ============ Section strip ============ */
+.section-strip {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--label-bg2);
+  border-left: 1px solid var(--rule-soft);
+  border-right: 1px solid var(--rule-soft);
+  border-top: 1px solid var(--rule-soft);
+  padding: 4px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--label-ink);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.section-strip .num { color: var(--text-faint); }
+.section-strip .ttl { color: var(--ink); }
+.section-strip .hint {
+  margin-left: auto;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+/* ============ Main table (preserve grid feel) ============ */
+.main-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  background: var(--paper);
+}
+.main-table td {
+  border: 1px solid var(--rule-soft);
+  padding: 3px 6px;
+  vertical-align: middle;
+  font-size: 11px;
+  color: var(--ink);
+  height: 22px;
+  overflow: hidden;
+}
+.main-table td.label {
+  background: var(--label-bg);
+  font-weight: 500;
+  text-align: center;
+  font-size: 11px;
+  color: var(--label-ink);
+  letter-spacing: 0.02em;
+}
+.main-table td.label-sm {
+  font-size: 10px; line-height: 1.4;
+  text-align: left;
+  padding: 4px 6px;
+}
+.main-table td.label-dark {
+  background: var(--label-bg2);
+  font-weight: 600;
+  text-align: center;
+  color: var(--label-ink);
+  font-size: 11px;
+}
+.main-table td.val-mono { font-family: 'JetBrains Mono', monospace; }
+.main-table td.cap-fill { background: var(--accent-soft); }
+.main-table td.num { text-align: right; font-family: 'JetBrains Mono', monospace; }
+.main-table td.center { text-align: center; }
+.main-table td.muted { background: var(--label-bg); }
+.unit { color: var(--label-ink); font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-left: 2px; }
+
+/* nested no-padding cells */
+.main-table td.bare { padding: 0; }
+
+/* ============ Editable fields ============ */
+.editable {
+  cursor: text;
+  min-width: 1em;
+  display: inline-block;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink);
+  transition: background 0.1s, outline 0.1s;
+}
+.editable:hover {
+  background: #fffce0;
+  outline: 1px dashed #c0c4c9;
+  outline-offset: -1px;
+}
+.editable:focus {
+  background: #fff8c5;
+  outline: 1.5px solid var(--accent);
+  outline-offset: -1px;
+}
+.editable.kana { font-family: 'Inter', 'Hiragino Kaku Gothic Pro', sans-serif; }
+.editable.wide { display: block; width: 100%; }
+
+/* ============ Checkbox · radio ============ */
+.checkbox {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 1px solid var(--label-ink);
+  vertical-align: -2px;
+  margin: 0 4px 0 1px;
+  position: relative;
+  background: var(--paper);
+  border-radius: 2px;
+}
+.checkbox.checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.checkbox.checked::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 1px;
+  width: 3px; height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(40deg);
+}
+.checkbox.checkable {
+  cursor: pointer;
+  transition: box-shadow 0.1s, transform 0.05s;
+}
+.checkbox.checkable:hover {
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+.checkbox.checkable:active { transform: scale(0.92); }
+
+/* radio variant: a circle */
+.radio {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--label-ink);
+  vertical-align: -1px;
+  margin: 0 3px 0 1px;
+  position: relative;
+  background: var(--paper);
+  cursor: pointer;
+}
+.radio.checked { border-color: var(--accent); }
+.radio.checked::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.chk-line {
+  display: inline-flex; align-items: center;
+  gap: 1px;
+  margin-right: 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.chk-line.checked { font-weight: 500; color: var(--ink); }
+
+/* ============ Work columns header (A/B/C) ============ */
+.work-col-header {
+  background: var(--label-bg2);
+  text-align: center;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--label-ink);
+  letter-spacing: 0.04em;
+}
+.work-col-header .tag {
+  display: inline-grid;
+  place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 11px;
+  margin-right: 5px;
+  vertical-align: -3px;
+}
+
+/* time-grid mini-ruler */
+.time-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  height: 100%;
+  font-family: 'JetBrains Mono', monospace;
+}
+.time-grid > div {
+  text-align: center;
+  border-right: 1px solid var(--rule-soft);
+  font-size: 10px;
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+.time-grid > div:last-child { border-right: none; }
+
+/* ============ Right column ============ */
+.right-header {
+  border: 1px solid var(--rule);
+  padding: 6px 9px;
+  font-size: 10px;
+  background: var(--paper);
+}
+.right-header .h-title {
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 10.5px;
+  margin-bottom: 4px;
+  letter-spacing: 0.04em;
+}
+.right-header .h-title::before {
+  content: '§05 ';
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+  margin-right: 4px;
+}
+.right-header .h-sub {
+  font-size: 11px;
+  color: var(--label-ink);
+  line-height: 1.7;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+}
+
+/* image grid: drawings — grows to fill all remaining vertical space */
+.image-grid {
+  border: 1px solid var(--rule);
+  padding: 5px;
+  flex: 1 1 0;
+  display: grid;
+  grid-template-rows: 1.6fr 1fr;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  background: var(--paper);
+  min-height: 0;
+}
+.image-box {
+  border: 1px solid var(--rule-soft);
+  display: flex;
+  flex-direction: column;
+  background: #fafafa;
+  position: relative;
+  overflow: hidden;
+}
+.image-box.large { grid-column: span 2; }
+.image-box .ttl {
+  background: var(--label-bg2);
+  color: var(--label-ink);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--rule-soft);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.04em;
+}
+.image-box .ttl .scale {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+}
+.image-box .img-wrap {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  background: repeating-linear-gradient(
+    45deg,
+    #f7f7f4 0 6px,
+    #f0f0ec 6px 7px
+  );
+  position: relative;
+}
+.image-box .img-wrap::before {
+  content: 'IMAGE · drop drawing here';
+  position: absolute;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.1em;
+}
+.image-box img {
+  max-width: 100%; max-height: 100%;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+}
+.image-box img[src=""] { display: none; }
+.image-box.has-img .img-wrap::before { display: none; }
+.image-box.has-img .img-wrap { background: #fafafa; }
+
+/* ============ Bottom info area ============ */
+.bottom-area {
+  border: 1px solid var(--rule);
+  padding: 6px 8px;
+  font-size: 11px;
+  background: var(--paper);
+  display: flex; flex-direction: column;
+  gap: 5px;
+}
+.bottom-area .row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.color-table {
+  border-collapse: collapse;
+  font-size: 10.5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.color-table th, .color-table td {
+  border: 1px solid var(--rule-soft);
+  padding: 2px 6px;
+  text-align: center;
+  color: var(--label-ink);
+}
+.color-table th {
+  background: var(--label-bg);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-size: 10.5px;
+}
+.color-swatch {
+  display: inline-block;
+  width: 11px; height: 11px;
+  border: 1px solid var(--rule);
+  vertical-align: -2px;
+  margin-right: 3px;
+  border-radius: 1px;
+}
+
+.inspection-note {
+  font-size: 11px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+.inspection-note strong {
+  font-weight: 600;
+  color: var(--label-ink);
+  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  font-family: 'JetBrains Mono', monospace;
+}
+.legend-row {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin-right: 9px;
+}
+.legend-row .glyph {
+  width: 16px; height: 16px;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--rule-soft);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 10px;
+  background: var(--paper);
+  border-radius: 2px;
+}
+
+.notify-box {
+  border: 1px solid var(--rule-soft);
+  background: var(--label-bg);
+  padding: 5px 8px;
+  margin-top: 4px;
+}
+.notify-box .h {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--label-ink);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.sign-block {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.sign-block .k { color: var(--label-ink); }
+.chop {
+  display: inline-grid; place-items: center;
+  width: 20px; height: 20px;
+  border: 1.4px solid var(--danger);
+  border-radius: 50%;
+  color: var(--danger);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  transform: rotate(-8deg);
+  line-height: 1;
+}
+
+/* ============ Notes ============ */
+.notes {
+  font-size: 10.5px;
+  padding: 6px 10px;
+  line-height: 1.55;
+  background: var(--label-bg);
+  border: 1px solid var(--rule-soft);
+  color: var(--ink);
+}
+.notes .h {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--label-ink);
+  text-transform: uppercase;
+  margin-right: 6px;
+}
+.notes ol { margin: 0; padding-left: 18px; }
+.notes ol li { margin-bottom: 3px; }
+
+/* ============ Confirm grid ============ */
+.confirm-table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--paper);
+}
+.confirm-table td {
+  border: 1px solid var(--rule-soft);
+  padding: 1px 4px;
+  font-size: 10.5px;
+  height: 15px;
+  color: var(--ink);
+}
+.confirm-table .header-row td {
+  background: var(--label-bg2);
+  font-weight: 600;
+  text-align: center;
+  color: var(--label-ink);
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+.confirm-table .op-check {
+  font-size: 11px;
+}
+.confirm-table .ox-input {
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* spacer that fills remaining column height — keeps both columns equal */
+.col-flex { flex: 1; min-height: 0; }
+.col-fill { flex: 1; min-height: 0; }
+
+/* ============ Print ============ */
+@media print {
+  body { background: #fff; padding: 0; }
+  #toolbar, #ruler, #edit-hint { display: none !important; }
+  .page-wrap { padding: 0; }
+  .page {
+    box-shadow: none;
+    margin: 0;
+    border: none;
+    width: 100%;
+    height: 100vh;
+  }
+  .editable:hover, .editable:focus {
+    background: transparent !important;
+    outline: none !important;
+  }
+  .checkbox.checkable:hover { box-shadow: none !important; }
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ============ Edit hint ============ */
+#edit-hint {
+  position: fixed;
+  top: 80px; right: 16px;
+  background: var(--accent);
+  color: #fff;
+  padding: 7px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  z-index: 998;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  animation: fade-out 0.4s ease-in 6s forwards;
+  display: flex; align-items: center; gap: 6px;
+}
+@keyframes fade-out { to { opacity: 0; visibility: hidden; } }
+</style>
+</head>
+<body>
+
+
+
+<!-- ============ Toolbar ============ -->
+<div id="toolbar">
+  <div class="brand-mark">C</div>
+  <div class="title">移動式クレーン作業計画書</div>
+  <div class="badge">CF-19</div>
+  <div class="badge ok" id="badge-saved"><span>●</span> 下書き保存済 · <span id="save-time">14:32</span></div>
+  <div class="spacer"></div>
+  <span id="save-status" class="saved"><span class="dot"></span><span id="save-text">自動保存済み</span></span>
+  <button onclick="showHelp()" title="ヘルプ">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"></circle><path d="M6.3 6.2c0-1 .8-1.7 1.7-1.7s1.7.7 1.7 1.6c0 1.4-1.7 1.5-1.7 2.9"></path><circle cx="8" cy="11.5" r=".4" fill="currentColor" stroke="none"></circle></svg>
+    ヘルプ
+  </button>
+  <button onclick="resetToAppData()" title="リセット">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M3 8a5 5 0 1 0 1.5-3.5"></path><path d="M3 3v3h3"></path></svg>
+    リセット
+  </button>
+  <button class="primary" onclick="window.print()" title="印刷 / PDF出力">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6V2h8v4"></path><rect x="2.5" y="6" width="11" height="6" rx="1"></rect><path d="M4 11h8v3H4z"></path></svg>
+    PDF出力
+  </button>
+  <button class="danger" onclick="closePlanDoc()" title="閉じる">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>
+  </button>
+</div>
+
+<!-- ============ Ruler ============ -->
+<div id="ruler">
+  <span class="xls-tag">XLS</span>
+  <span class="path">クレーン作業計画書.xlsx<span class="sep">/</span>Sheet1<span class="sep">/</span>A3</span>
+  <div class="meta">
+    <span class="ok">✓ 必須 24/24</span>
+    <span>用紙: A3 横</span>
+    <span>表示: 100%</span>
+    <span>更新: 2026-05-23 14:32</span>
+  </div>
+</div>
+
+<div id="edit-hint">
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 2l3 3-9 9H2v-3z"></path></svg>
+  文字をクリックして編集 · ☐ クリックでチェック
+</div>
+
+<div class="page-wrap">
+<div class="page">
+
+  <!-- ===================== LEFT COLUMN ===================== -->
+  <div class="col-left">
+
+    <!-- ─── Title band ─── -->
+    <div class="title-band">
+      <div class="stamp">
+        <div class="form-no">FORM <strong>CF-19</strong></div>
+        <div class="ver">REV. 2026.05</div>
+      </div>
+      <div class="title-main">
+        <div class="ja">クレーン作業計画書</div>
+        <div class="en">MOBILE CRANE · WORK PLAN SHEET</div>
+      </div>
+      <div class="meta">
+        <div class="row"><span class="k">DATE</span><span class="v"><span class="editable" data-field="docDate" contenteditable="true">2026-05-23</span></span></div>
+        <div class="row"><span class="k">SITE</span><span class="v"><span class="editable kana" data-field="docSite" contenteditable="true">横浜現場 第2期</span></span></div>
+        <div class="row"><span class="k">REF.</span><span class="v">YH-2026-051</span></div>
+      </div>
+    </div>
+
+    <!-- ─── §01 機種・人員 ─── -->
+    <div class="section-strip">
+      <span class="num">§01</span>
+      <span class="ttl">MACHINE / PERSONNEL · 機種 · 人員</span>
+    </div>
+
+    <table class="main-table">
+      <colgroup><col style="width:14%"><col span="18"></colgroup>
+      <tbody><tr>
+        <td class="label" rowspan="2">機種・性能</td>
+        <td colspan="4"><span class="checkbox checkable" data-key="hydraulicTC"></span>油圧式ＴＣ</td>
+        <td colspan="4"><span class="checkbox checkable" data-key="mechanicalTC"></span>機械式ＴＣ</td>
+        <td colspan="4"><span class="checkbox checkable checked" data-key="roughterC"></span>ラフターＣ</td>
+        <td colspan="4"><span class="checkbox checkable" data-key="truckMountedC"></span>車両積載型Ｃ</td>
+        <td colspan="2" rowspan="2" class="num center" style="font-weight:600;">
+          <span class="editable" data-field="tonnage" contenteditable="true">25</span><span class="unit">t吊</span>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="4"><span class="checkbox checkable" data-key="crawlerC"></span>クローラーＣ</td>
+        <td colspan="4"><span class="checkbox checkable" data-key="crawlerTowerC"></span>ｸﾛｰﾗｰﾀﾜｰＣ</td>
+        <td colspan="8"><span class="checkbox checkable" data-key="other"></span>その他（<span class="editable kana" data-field="otherMachine" contenteditable="true">ﾀﾜｰｸﾚｰﾝ※1</span>）</td>
+      </tr>
+      <tr>
+        <td class="label">クレーン所有会社名</td>
+        <td colspan="8"><span class="editable kana wide" data-field="craneCompany" contenteditable="true">△△重機リース株式会社</span></td>
+        <td colspan="4" class="center label">運転者名（サイン）</td>
+        <td colspan="4"><span class="editable kana" data-field="operator" contenteditable="true">山本 直樹</span></td>
+        <td colspan="2" class="center label-dark">資格確認</td>
+      </tr>
+      <tr>
+        <td colspan="19" class="muted" style="text-align:left; padding:3px 5px; font-size: 10.5px; color:var(--text-dim);">
+          <span class="mono" style="color:var(--text-faint); margin-right:4px;">[i]</span>
+          使用会社の作業責任者は、計画内容を記入したうえで運転者（オペレーター）と打合せすること。
+        </td>
+      </tr>
+      <tr>
+        <td class="label">使用会社名</td>
+        <td colspan="18"><span class="editable kana wide" data-field="userCompany" contenteditable="true">〇〇建設株式会社</span></td>
+      </tr>
+      <tr>
+        <td class="label">作業実施日</td>
+        <td colspan="18" class="center">
+          <span class="editable" data-field="year" contenteditable="true">2026</span><span class="unit">年</span>
+          <span class="editable" data-field="month" contenteditable="true">5</span><span class="unit">月</span>
+          <span class="editable" data-field="day" contenteditable="true">23</span><span class="unit">日</span>
+          <span style="color:var(--text-faint); margin-left:6px;">(</span> <span class="editable kana" data-field="weekday" contenteditable="true">金</span> <span style="color:var(--text-faint);">)</span>
+        </td>
+      </tr>
+    </tbody></table>
+
+    <!-- ─── §02 作業計画 (A/B/C) ─── -->
+    <div class="section-strip">
+      <span class="num">§02</span>
+      <span class="ttl">WORK PLAN A·B·C · 作業計画</span>
+      <span class="hint">※1台ごと・使用日ごとに作成</span>
+    </div>
+
+    <table class="main-table">
+      <colgroup><col style="width:14%"><col span="18"></colgroup>
+      <tbody><tr>
+        <td class="label" rowspan="2">作業予定時間</td>
+        <td colspan="6" class="work-col-header"><span class="tag">A</span>作業 A</td>
+        <td colspan="6" class="work-col-header"><span class="tag">B</span>作業 B</td>
+        <td colspan="6" class="work-col-header"><span class="tag">C</span>作業 C</td>
+      </tr>
+      <tr style="height:20px;">
+        <td colspan="6" class="bare"><div class="time-grid"><div>8</div><div>10</div><div>12</div><div>14</div><div>16</div><div>18</div></div></td>
+        <td colspan="6" class="bare"><div class="time-grid"><div>8</div><div>10</div><div>12</div><div>14</div><div>16</div><div>18</div></div></td>
+        <td colspan="6" class="bare"><div class="time-grid"><div>8</div><div>10</div><div>12</div><div>14</div><div>16</div><div>18</div></div></td>
+      </tr>
+      <tr>
+        <td class="label">作業責任者</td>
+        <td colspan="6"><span class="editable kana" data-field="supervisorA" contenteditable="true">鈴木 健一</span></td>
+        <td colspan="6"><span class="editable kana" data-field="supervisorB" contenteditable="true">鈴木 健一</span></td>
+        <td colspan="6"><span class="editable kana" data-field="supervisorC" contenteditable="true">　</span></td>
+      </tr>
+      <tr>
+        <td class="label">作業場所</td>
+        <td colspan="6"><span class="editable kana wide" data-field="workSiteA" contenteditable="true">横浜 みなとみらい 1-2-3 B棟北側</span></td>
+        <td colspan="6"><span class="editable kana wide" data-field="workSiteB" contenteditable="true">横浜 みなとみらい 1-2-3 B棟北側</span></td>
+        <td colspan="6"><span class="editable kana wide" data-field="workSiteC" contenteditable="true">　</span></td>
+      </tr>
+      <tr>
+        <td class="label">作業内容</td>
+        <td colspan="6"><span class="editable kana wide" data-field="workDescA" contenteditable="true">鉄骨梁 H-300 揚重 ×6本</span></td>
+        <td colspan="6"><span class="editable kana wide" data-field="workDescB" contenteditable="true">鉄骨梁 H-300 揚重 ×6本</span></td>
+        <td colspan="6"><span class="editable kana wide" data-field="workDescC" contenteditable="true">　</span></td>
+      </tr>
+
+      <tr>
+        <td class="label" rowspan="3">作業条件</td>
+        <td colspan="4" class="label">必要な作業半径</td>
+        <td colspan="2" class="num"><span class="editable" data-field="radiusA" contenteditable="true">10.0</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">必要な作業半径</td>
+        <td colspan="2" class="num"><span class="editable" data-field="radiusB" contenteditable="true">11.0</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">必要な作業半径</td>
+        <td colspan="2" class="num"><span class="editable" data-field="radiusC" contenteditable="true">　</span><span class="unit">m</span></td>
+      </tr>
+      <tr>
+        <td colspan="4" class="label">必要な高さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="heightA" contenteditable="true">8.5</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">必要な高さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="heightB" contenteditable="true">8.5</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">必要な高さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="heightC" contenteditable="true">　</span><span class="unit">m</span></td>
+      </tr>
+      <tr>
+        <td colspan="4" class="label">荷の重量</td>
+        <td colspan="2" class="num"><span class="editable" data-field="weightA" contenteditable="true">0.95</span><span class="unit">t</span></td>
+        <td colspan="4" class="label">荷の重量</td>
+        <td colspan="2" class="num"><span class="editable" data-field="weightB" contenteditable="true">0.95</span><span class="unit">t</span></td>
+        <td colspan="4" class="label">荷の重量</td>
+        <td colspan="2" class="num"><span class="editable" data-field="weightC" contenteditable="true">　</span><span class="unit">t</span></td>
+      </tr>
+
+      <tr>
+        <td class="label" rowspan="3">クレーンの能力</td>
+        <td colspan="6" class="center" style="font-size: 10.5px; color:var(--text-dim);">同上の作業半径時の</td>
+        <td colspan="6" class="center" style="font-size: 10.5px; color:var(--text-dim);">同上の作業半径時の</td>
+        <td colspan="6" class="center" style="font-size: 10.5px; color:var(--text-dim);">同上の作業半径時の</td>
+      </tr>
+      <tr>
+        <td colspan="4" class="label">定格荷重</td>
+        <td colspan="2" class="num cap-fill" style="color:var(--accent); font-weight:600;"><span class="editable" data-field="capacityA" contenteditable="true">2.40</span><span class="unit" style="color:var(--accent);">t</span></td>
+        <td colspan="4" class="label">定格荷重</td>
+        <td colspan="2" class="num cap-fill" style="color:var(--accent); font-weight:600;"><span class="editable" data-field="capacityB" contenteditable="true">2.40</span><span class="unit" style="color:var(--accent);">t</span></td>
+        <td colspan="4" class="label">定格荷重</td>
+        <td colspan="2" class="num cap-fill"><span class="editable" data-field="capacityC" contenteditable="true">　</span><span class="unit">t</span></td>
+      </tr>
+      <tr>
+        <td colspan="4" class="label">ジブの長さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="boomA" contenteditable="true">12.0</span><span class="unit">m+</span><span class="editable" data-field="boomA2" contenteditable="true">3.0</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">ジブの長さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="boomB" contenteditable="true">12.0</span><span class="unit">m+</span><span class="editable" data-field="boomB2" contenteditable="true">3.0</span><span class="unit">m</span></td>
+        <td colspan="4" class="label">ジブの長さ</td>
+        <td colspan="2" class="num"><span class="editable" data-field="boomC" contenteditable="true">　</span><span class="unit">m+</span><span class="editable" data-field="boomC2" contenteditable="true">　</span><span class="unit">m</span></td>
+      </tr>
+
+      <tr>
+        <td class="label label-sm" rowspan="2">
+          <span class="checkbox checkable checked" data-key="wireOne"></span>玉掛ワイヤー (径)<br>
+          <span class="checkbox checkable" data-key="beltOne"></span>ベルトスリング (幅)<br>
+          <span class="checkbox checkable" data-key="chainOne"></span>チェーン (線径)
+        </td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wireDiaA" contenteditable="true">12</span><span class="unit">mm</span></td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wireDiaB" contenteditable="true">12</span><span class="unit">mm</span></td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wireDiaC" contenteditable="true">　</span><span class="unit">mm</span></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wireLenA" contenteditable="true">2.5</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wireNumA" contenteditable="true">4</span><span class="unit">本</span></td>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wireLenB" contenteditable="true">2.5</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wireNumB" contenteditable="true">4</span><span class="unit">本</span></td>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wireLenC" contenteditable="true">　</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wireNumC" contenteditable="true">　</span><span class="unit">本</span></td>
+      </tr>
+
+      <tr>
+        <td class="label label-sm" rowspan="2">
+          <span class="checkbox checkable" data-key="wireTwo"></span>玉掛ワイヤー (径)<br>
+          <span class="checkbox checkable" data-key="beltTwo"></span>ベルトスリング (幅)<br>
+          <span class="checkbox checkable" data-key="chainTwo"></span>チェーン (線径)
+        </td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wire2DiaA" contenteditable="true">　</span><span class="unit">mm</span></td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wire2DiaB" contenteditable="true">　</span><span class="unit">mm</span></td>
+        <td colspan="3" class="label">径 (幅)</td><td colspan="3" class="num"><span class="editable" data-field="wire2DiaC" contenteditable="true">　</span><span class="unit">mm</span></td>
+      </tr>
+      <tr>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wire2LenA" contenteditable="true">　</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wire2NumA" contenteditable="true">　</span><span class="unit">本</span></td>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wire2LenB" contenteditable="true">　</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wire2NumB" contenteditable="true">　</span><span class="unit">本</span></td>
+        <td colspan="2" class="label">長</td><td colspan="2" class="num"><span class="editable" data-field="wire2LenC" contenteditable="true">　</span><span class="unit">m</span></td><td colspan="2" class="num"><span class="editable" data-field="wire2NumC" contenteditable="true">　</span><span class="unit">本</span></td>
+      </tr>
+
+      <tr>
+        <td class="label">玉掛者</td>
+        <td colspan="6"><span class="editable kana" data-field="riggerA" contenteditable="true">山田 / 伊藤</span></td>
+        <td colspan="6"><span class="editable kana" data-field="riggerB" contenteditable="true">山田 / 伊藤</span></td>
+        <td colspan="6"><span class="editable kana" data-field="riggerC" contenteditable="true">　</span></td>
+      </tr>
+      <tr>
+        <td class="label">合図者</td>
+        <td colspan="6"><span class="editable kana" data-field="signalerA" contenteditable="true">高橋</span></td>
+        <td colspan="6"><span class="editable kana" data-field="signalerB" contenteditable="true">高橋</span></td>
+        <td colspan="6"><span class="editable kana" data-field="signalerC" contenteditable="true">　</span></td>
+      </tr>
+
+      <tr>
+        <td class="label">合図の方法</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="handSignalA"></span>手合図 <span class="checkbox checkable checked" data-key="radioA"></span>無線 <span class="checkbox checkable" data-key="whistleA"></span>笛</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="handSignalB"></span>手合図 <span class="checkbox checkable checked" data-key="radioB"></span>無線 <span class="checkbox checkable" data-key="whistleB"></span>笛</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="handSignalC"></span>手合図 <span class="checkbox checkable" data-key="radioC"></span>無線 <span class="checkbox checkable" data-key="whistleC"></span>笛</td>
+      </tr>
+    </tbody></table>
+
+    <!-- ─── §03 地盤 / 安全 ─── -->
+    <div class="section-strip">
+      <span class="num">§03</span>
+      <span class="ttl">GROUND / SAFETY · 地盤 · 安全</span>
+    </div>
+
+    <table class="main-table">
+      <colgroup><col style="width:14%"><col span="18"></colgroup>
+      <tbody><tr>
+        <td class="label">地形</td>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="terrainFlatA"></span>平地 <span class="checkbox checkable" data-key="terrainSlopeA"></span>傾斜地</td>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="terrainFlatB"></span>平地 <span class="checkbox checkable" data-key="terrainSlopeB"></span>傾斜地</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="terrainFlatC"></span>平地 <span class="checkbox checkable" data-key="terrainSlopeC"></span>傾斜地</td>
+      </tr>
+      <tr>
+        <td class="label">地盤強度</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilGoodA"></span>堅固 <span class="checkbox checkable checked" data-key="soilNormalA"></span>普通 <span class="checkbox checkable" data-key="soilSoftA"></span>軟弱</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilGoodB"></span>堅固 <span class="checkbox checkable checked" data-key="soilNormalB"></span>普通 <span class="checkbox checkable" data-key="soilSoftB"></span>軟弱</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilGoodC"></span>堅固 <span class="checkbox checkable" data-key="soilNormalC"></span>普通 <span class="checkbox checkable" data-key="soilSoftC"></span>軟弱</td>
+      </tr>
+      <tr>
+        <td class="label" rowspan="2">地盤養生</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="plateBoardA"></span>皿板 <span class="checkbox checkable" data-key="plateLogA"></span>まくら木 <span class="checkbox checkable checked" data-key="plateSteelA"></span>敷鉄板</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="plateBoardB"></span>皿板 <span class="checkbox checkable" data-key="plateLogB"></span>まくら木 <span class="checkbox checkable checked" data-key="plateSteelB"></span>敷鉄板</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="plateBoardC"></span>皿板 <span class="checkbox checkable" data-key="plateLogC"></span>まくら木 <span class="checkbox checkable" data-key="plateSteelC"></span>敷鉄板</td>
+      </tr>
+      <tr>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilImprovedA"></span>地盤改良 <span class="checkbox checkable" data-key="soilFillA"></span>良質盛土</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilImprovedB"></span>地盤改良 <span class="checkbox checkable" data-key="soilFillB"></span>良質盛土</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="soilImprovedC"></span>地盤改良 <span class="checkbox checkable" data-key="soilFillC"></span>良質盛土</td>
+      </tr>
+      <tr>
+        <td class="label">アウトリガー最大張出し</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="outNGA"></span>不可 (対策<span class="editable kana" data-field="outActionA" contenteditable="true">　</span>) <span class="checkbox checkable checked" data-key="outOKA"></span>可能</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="outNGB"></span>不可 (対策<span class="editable kana" data-field="outActionB" contenteditable="true">　</span>) <span class="checkbox checkable checked" data-key="outOKB"></span>可能</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="outNGC"></span>不可 (対策<span class="editable kana" data-field="outActionC" contenteditable="true">　</span>) <span class="checkbox checkable" data-key="outOKC"></span>可能</td>
+      </tr>
+      <tr>
+        <td class="label" rowspan="2">吊荷下への立入禁止措置</td>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="barricadeA"></span>バリケード <span class="checkbox checkable" data-key="ropeA"></span>ロープ</td>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="barricadeB"></span>バリケード <span class="checkbox checkable" data-key="ropeB"></span>ロープ</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="barricadeC"></span>バリケード <span class="checkbox checkable" data-key="ropeC"></span>ロープ</td>
+      </tr>
+      <tr>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="watcherA"></span>見張人 <span class="checkbox checkable checked" data-key="coneA"></span>カラーコーン</td>
+        <td colspan="6"><span class="checkbox checkable checked" data-key="watcherB"></span>見張人 <span class="checkbox checkable checked" data-key="coneB"></span>カラーコーン</td>
+        <td colspan="6"><span class="checkbox checkable" data-key="watcherC"></span>見張人 <span class="checkbox checkable" data-key="coneC"></span>カラーコーン</td>
+      </tr>
+      <tr>
+        <td class="label">架空線接近</td>
+        <td colspan="6">対策: <span class="editable kana" data-field="overheadA" contenteditable="true">該当なし</span></td>
+        <td colspan="6">対策: <span class="editable kana" data-field="overheadB" contenteditable="true">該当なし</span></td>
+        <td colspan="6">対策: <span class="editable kana" data-field="overheadC" contenteditable="true">　</span></td>
+      </tr>
+      <tr>
+        <td class="label">風の対策</td>
+        <td colspan="9">作業中止基準: <span class="editable" data-field="windLimit" contenteditable="true">10</span><span class="unit">m/s 以上</span></td>
+        <td colspan="9">目安の測定: <span class="editable kana" data-field="windMeasure" contenteditable="true">10分間平均風速</span></td>
+      </tr>
+    </tbody></table>
+
+    <div class="notes">
+      <div><span class="h">NOTE 01</span>タワークレーンの場合は、移動式クレーン固有の確認項目 (地形・地盤強度・地盤養生・アウトリガー) は記入しない</div>
+      <div><span class="h">NOTE 02</span>つり上げ荷重 1t 以上のクレーンを想定し、玉掛者は技能講習を修了していること</div>
+      <div><span class="h">NOTE 03</span>基本安全荷重 1t 以上の製品を使用 — 原則、玉掛ワイヤーは径 12mm 以上、ベルトスリングは幅 50mm 以上とする</div>
+    </div>
+
+
+    <div class="notes" style="margin-top:0;">
+      <div style="margin-bottom:2px;"><span class="h">運用方法</span></div>
+      <ol>
+        <li>計画書は、使用会社毎に作成する</li>
+        <li>作業責任者が作成する — 1 台ごと・使用日ごとに作成する</li>
+        <li>経路: 「作業責任者」→「元請」→「オペレーター」→「元請保管」</li>
+        <li>作業計画を変更する時は、「元請担当者」に申し出るとともに再度打合せをする</li>
+      </ol>
+    </div>
+
+  </div>
+
+  <!-- ===================== RIGHT COLUMN ===================== -->
+  <div class="col-right">
+
+    <!-- ─── Title / spacer to match left title-band height ─── -->
+    <div class="title-band" style="padding: 0;">
+      <div class="stamp" style="width: 70px;">
+        <div class="form-no">SHEET <strong>2/2</strong></div>
+        <div class="ver">DRAWINGS</div>
+      </div>
+      <div class="title-main">
+        <div class="ja" style="font-size: 16px;">作業範囲 · 運行経路</div>
+        <div class="en">WORK AREA · DRAWINGS · LEGEND</div>
+      </div>
+      <div class="meta" style="min-width: 110px;">
+        <div class="row"><span class="k">SCALE</span><span class="v">1:200</span></div>
+        <div class="row"><span class="k">NORTH</span><span class="v">↑ N</span></div>
+        <div class="row"><span class="k">GRID</span><span class="v">5m</span></div>
+      </div>
+    </div>
+
+    <div class="right-header">
+      <div class="h-title">作業場所及び作業範囲と運行経路</div>
+      <div class="h-sub">
+        <span><span class="checkbox checkable checked" data-key="cranePos"></span>クレーン設置位置</span>
+        <span><span class="checkbox checkable" data-key="aux"></span>付属する機械設備</span>
+        <span><span class="checkbox checkable checked" data-key="signalerPos"></span>合図者位置</span>
+        <span><span class="checkbox checkable checked" data-key="riggerPos"></span>玉掛者位置</span>
+        <span><span class="checkbox checkable checked" data-key="pickPos"></span>吊り荷位置</span>
+        <span><span class="checkbox checkable checked" data-key="dropPos"></span>荷下し位置</span>
+        <span><span class="checkbox checkable checked" data-key="rotation"></span>旋回方向</span>
+        <span><span class="checkbox checkable checked" data-key="safetyPath"></span>安全通路</span>
+        <span><span class="checkbox checkable checked" data-key="forbiddenArea"></span>立入禁止区域</span>
+        <span><span class="checkbox checkable" data-key="overheadLine"></span>架空線位置</span>
+      </div>
+    </div>
+
+    <div class="image-grid">
+      <div class="image-box large" id="img-perspective">
+        <div class="ttl">
+          <span style="color:var(--accent);">▣</span> 透視図 PERSPECTIVE
+          <span class="scale">1:200 · NORTH↑</span>
+        </div>
+        <div class="img-wrap">
+          <img alt="" data-img-key="perspective">
+        </div>
+      </div>
+      <div class="image-box" id="img-plan">
+        <div class="ttl">
+          <span style="color:var(--accent);">▣</span> 平面図 PLAN
+          <span class="scale">俯瞰</span>
+        </div>
+        <div class="img-wrap">
+          <img alt="" data-img-key="plan">
+        </div>
+      </div>
+      <div class="image-box" id="img-elevation">
+        <div class="ttl">
+          <span style="color:var(--accent);">▣</span> 立面図 ELEVATION
+          <span class="scale">側面</span>
+        </div>
+        <div class="img-wrap">
+          <img alt="" data-img-key="elevation">
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-area">
+      <!-- §06 月度点検色 + 凡例 -->
+      <div class="section-strip" style="border:none; padding:0 0 2px; background:transparent;">
+        <span class="num">§06</span>
+        <span class="ttl">MONTHLY INSPECTION COLOR · 月度点検色</span>
+      </div>
+      <div class="row">
+        <table class="color-table">
+          <tbody><tr><th>月度</th><th></th><th>色</th></tr>
+          <tr><td>1月</td><td>5月 9月</td><td><span class="color-swatch" style="background:#16a34a;"></span>緑</td></tr>
+          <tr><td>2月</td><td>6月 10月</td><td><span class="color-swatch" style="background:#eab308;"></span>黄</td></tr>
+          <tr><td>3月</td><td>7月 11月</td><td><span class="color-swatch" style="background:#dc2626;"></span>赤</td></tr>
+          <tr><td>4月</td><td>8月 12月</td><td><span class="color-swatch" style="background:#fff;"></span>白</td></tr>
+        </tbody></table>
+
+        <div class="inspection-note">
+          <div style="margin-bottom:5px;">
+            <strong>当月度点検色</strong> →
+            <span class="editable kana" data-field="inspectionColor" contenteditable="true" style="background:#dcfce7; padding:1px 8px; color:var(--ok); font-weight:600;">緑</span>
+          </div>
+          <div style="margin-bottom:4px;">
+            <strong>略号凡例</strong>
+          </div>
+          <div style="margin-bottom:6px;">
+            <span class="legend-row"><span class="glyph" style="color:var(--warn);">ク</span>クレーン</span>
+            <span class="legend-row"><span class="glyph" style="color:var(--accent);">合</span>合図者</span>
+            <span class="legend-row"><span class="glyph" style="color:var(--ok);">玉</span>玉掛者</span>
+          </div>
+          <div>
+            <span class="legend-row"><span class="glyph" style="color:var(--text-dim);">→</span>旋回方向</span>
+            <span class="legend-row"><span class="glyph" style="color:var(--danger);">×</span>立入禁止</span>
+            <span class="legend-row"><span class="glyph" style="color:var(--text-dim);">═</span>運行経路</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 周知の記録 + サイン -->
+      <div class="notify-box">
+        <div class="h">§07 周知の記録 · SIGN-OFF</div>
+        <div style="font-size: 11px; line-height:1.5;">
+          当作業計画書に従って作業します。&lt;
+          <span class="editable" data-field="confirmMonth" contenteditable="true">5</span><span class="unit">月</span>
+          <span class="editable" data-field="confirmDay" contenteditable="true">23</span><span class="unit">日</span> &gt;
+        </div>
+        <div class="sign-block">
+          <span class="k">作業責任者</span>
+          <span class="editable kana" data-field="signResp" contenteditable="true" style="min-width:60px;">鈴木 健一</span>
+          <span class="chop">印</span>
+          <span class="k" style="margin-left:8px;">担当者</span>
+          <span class="editable kana" data-field="signStaff" contenteditable="true" style="min-width:60px;">田中 修</span>
+          <span class="chop">印</span>
+          <span class="k" style="margin-left:8px;">統責者</span>
+          <span class="editable kana" data-field="signMgr" contenteditable="true" style="min-width:60px;">佐藤 明</span>
+          <span class="chop">印</span>
+        </div>
+      </div>
+
+      <!-- 参考条文 -->
+      <div style="border:1px solid var(--rule-soft); padding:5px 7px; font-size: 10px; line-height:1.6; color:var(--ink); background:var(--paper); margin-top:2px;">
+        <div style="font-family:'JetBrains Mono',monospace; font-size: 10.5px; color:var(--label-ink); letter-spacing:0.08em; margin-bottom:3px; text-transform:uppercase; font-weight:600;">
+          REFERENCE · 安全衛生法 · 安全衛生規則
+        </div>
+        <div style="color:var(--text-dim);">安衛法 第20条1 — 事業者は機械・器具・設備による危険を防止するために必要な措置を講じなければならない。</div>
+        <div style="color:var(--text-dim); margin-top:2px;">
+          <span class="mono" style="color:var(--label-ink);">ク則</span> 第66条の2 · 67 · 68 · 69 · 70の2 · 70の3 · 70の4 · 70の5 · 71 · 74 · 74の3
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</div>
+
+<script>
+// ============ 自動保存 / 読込 (localStorage) ============
+const STORAGE_KEY = 'crane_cf19_cadpro_v1';
+
+function getCurrentState() {
+  const state = { fields: {}, checkboxes: {}, images: {} };
+  document.querySelectorAll('.editable').forEach(el => {
+    state.fields[el.dataset.field] = el.innerHTML;
+  });
+  document.querySelectorAll('.checkbox.checkable').forEach(el => {
+    state.checkboxes[el.dataset.key] = el.classList.contains('checked');
+  });
+  document.querySelectorAll('.image-box img[data-img-key]').forEach(el => {
+    if (el.src && el.src.startsWith('data:')) state.images[el.dataset.imgKey] = el.src;
+  });
+  return state;
+}
+
+let saveTimer = null;
+function setSaveStatus(text, isSaved) {
+  const status = document.getElementById('save-status');
+  document.getElementById('save-text').textContent = text;
+  status.classList.toggle('saved', !!isSaved);
+}
+
+function autoSave() {
+  clearTimeout(saveTimer);
+  setSaveStatus('保存中…', false);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(getCurrentState()));
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('save-time').textContent = h + ':' + m;
+      setSaveStatus('自動保存済み', true);
+    } catch (e) {
+      setSaveStatus('保存失敗', false);
+    }
+  }, 600);
+}
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    document.querySelectorAll('.editable').forEach(el => {
+      const v = state.fields?.[el.dataset.field];
+      if (v !== undefined) el.innerHTML = v;
+    });
+    document.querySelectorAll('.checkbox.checkable').forEach(el => {
+      const v = state.checkboxes?.[el.dataset.key];
+      if (v !== undefined) el.classList.toggle('checked', v);
+    });
+    document.querySelectorAll('.image-box img[data-img-key]').forEach(el => {
+      const v = state.images?.[el.dataset.imgKey];
+      if (v) {
+        el.src = v;
+        el.closest('.image-box').classList.add('has-img');
+      }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+function resetToAppData() {
+  if (!confirm('リセットすると、編集内容が消えてアプリ側のデータに戻ります。よろしいですか？')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+// iframe に埋め込まれている場合は親フレームに通知して閉じてもらう。
+// スタンドアロンで開かれているときは従来通り window.close()。
+function closePlanDoc() {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'crane-plan-close' }, '*');
+      return;
+    }
+  } catch (e) {}
+  window.close();
+}
+
+function showHelp() {
+  alert([
+    '【 計画書 編集ヘルプ 】',
+    '',
+    '■ 編集方法',
+    '  · 文字をクリック → 直接入力',
+    '  · □ をクリック → ☑ に切替',
+    '  · 編集は自動で保存されます',
+    '',
+    '■ 出力',
+    '  · PDF出力ボタン → PDF として保存',
+    '  · 印刷時、ツールバーは非表示',
+    '',
+    '■ 図面の挿入',
+    '  · 透視図 / 平面図 / 立面図エリアに',
+    '    画像ファイルをドラッグ&ドロップ'
+  ].join('\n'));
+}
+
+// ============ Checkbox toggle ============
+document.addEventListener('click', (e) => {
+  const cb = e.target.closest('.checkbox.checkable');
+  if (cb) {
+    cb.classList.toggle('checked');
+    autoSave();
+  }
+});
+
+// ============ Field edit listeners ============
+document.querySelectorAll('.editable').forEach(el => {
+  el.addEventListener('input', autoSave);
+  el.addEventListener('blur', autoSave);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      el.blur();
+    }
+  });
+});
+
+// ============ Image drag and drop ============
+document.querySelectorAll('.image-box').forEach(box => {
+  box.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    box.style.outline = '2px dashed var(--accent)';
+    box.style.outlineOffset = '-2px';
+  });
+  box.addEventListener('dragleave', () => {
+    box.style.outline = '';
+  });
+  box.addEventListener('drop', (e) => {
+    e.preventDefault();
+    box.style.outline = '';
+    const file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = box.querySelector('img');
+      img.src = ev.target.result;
+      box.classList.add('has-img');
+      autoSave();
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+// ============ ページ自動フィット（横スクロール無しで画面幅に収める） ============
+// A3 ページ (420mm) は固定幅。viewport より広いときは CSS zoom で縮小して水平はみ出しを抑制。
+// 印刷時は zoom をクリアして @page サイズに任せる。
+function fitPageToViewport() {
+  const page = document.querySelector('.page');
+  const wrap = document.querySelector('.page-wrap');
+  if (!page || !wrap) return;
+
+  // 一旦 zoom を解除して自然サイズを測る
+  page.style.zoom = '';
+  // .page-wrap の padding 内側に収まる余白を考慮
+  const wrapStyle = getComputedStyle(wrap);
+  const availW = wrap.clientWidth
+    - parseFloat(wrapStyle.paddingLeft || 0)
+    - parseFloat(wrapStyle.paddingRight || 0);
+  const naturalW = page.offsetWidth;
+  if (naturalW > availW && availW > 0) {
+    page.style.zoom = (availW / naturalW).toFixed(4);
+  }
+}
+window.addEventListener('resize', fitPageToViewport);
+// 印刷直前は zoom クリア、印刷後に再適用
+window.addEventListener('beforeprint', () => {
+  const page = document.querySelector('.page');
+  if (page) page.style.zoom = '';
+});
+window.addEventListener('afterprint', fitPageToViewport);
+
+// ============ Boot ============
+window.addEventListener('load', () => {
+  const hasSaved = loadSaved();
+  setSaveStatus(hasSaved ? '前回の編集を復元' : '自動保存済み', true);
+  fitPageToViewport();
+});
+
+window.addEventListener('beforeunload', () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(getCurrentState())); } catch (e) {}
+  }
+});
+</script>
+
+
+
+</body></html>

@@ -3,8 +3,7 @@ import { state } from './state.js';
 import { getCraneCenter } from './tools.js';
 import {
     queryLoadChart,
-    evaluateSafety,
-    checkWorkingArea
+    evaluateSafety
 } from './crane-database.js';
 
 /**
@@ -17,18 +16,7 @@ export function calculateDistance(craneCenter, loadPos) {
 }
 
 /**
- * 计算载荷相对吊车的角度（度）
- * 0 = 正前方（-z 方向），90 = 右侧（+x），180 = 后方，270 = 左侧
- */
-export function calculateAngle(craneCenter, loadPos) {
-    const dx = loadPos.x - craneCenter.x;
-    const dz = loadPos.z - craneCenter.z;
-    let angle = Math.atan2(dx, -dz) * 180 / Math.PI;
-    return (angle + 360) % 360;
-}
-
-/**
- * 当前所有距离 + 角度
+ * 当前所有距离
  */
 export function calculateAllDistances() {
     const crane = state.placedObjects.find(o => o.userData.type === 'crane');
@@ -44,13 +32,11 @@ export function calculateAllDistances() {
         craneCenter,
         pickDistances: pickPoints.map(p => ({
             obj: p,
-            distance: calculateDistance(craneCenter, p.position),
-            angle: calculateAngle(craneCenter, p.position)
+            distance: calculateDistance(craneCenter, p.position)
         })),
         dropDistances: dropPoints.map(p => ({
             obj: p,
-            distance: calculateDistance(craneCenter, p.position),
-            angle: calculateAngle(craneCenter, p.position)
+            distance: calculateDistance(craneCenter, p.position)
         }))
     };
 }
@@ -58,19 +44,7 @@ export function calculateAllDistances() {
 /**
  * 单个载荷点的完整检查
  */
-function checkOneLoadPoint(craneId, outriggerMode, boomLength, distance, angle, actualLoad) {
-    // 1. 检查作業区域（前后/侧方限制）
-    const areaCheck = checkWorkingArea(craneId, outriggerMode, angle);
-    if (!areaCheck.ok) {
-        return {
-            status: 'danger',
-            maxLoad: 0,
-            usage: 999,
-            message: areaCheck.message
-        };
-    }
-
-    // 2. 查载荷表
+function checkOneLoadPoint(craneId, outriggerMode, boomLength, distance, actualLoad) {
     const loadResult = queryLoadChart(craneId, outriggerMode, boomLength, distance);
 
     if (!loadResult.isInRange) {
@@ -82,7 +56,6 @@ function checkOneLoadPoint(craneId, outriggerMode, boomLength, distance, angle, 
         };
     }
 
-    // 3. 计算使用率
     const usage = (actualLoad / loadResult.capacity) * 100;
     const status = evaluateSafety(actualLoad, loadResult.capacity);
 
@@ -111,14 +84,13 @@ export function performSafetyCheck() {
     data.pickDistances.forEach((d, i) => {
         const check = checkOneLoadPoint(
             craneId, outriggerMode, boomLength,
-            d.distance, d.angle, state.actualLoad
+            d.distance, state.actualLoad
         );
         checks.push({
             type: 'pickLoad',
             index: i,
             obj: d.obj,
             distance: d.distance,
-            angle: d.angle,
             ...check,
             label: `起吊 #${i + 1}`
         });
@@ -127,14 +99,13 @@ export function performSafetyCheck() {
     data.dropDistances.forEach((d, i) => {
         const check = checkOneLoadPoint(
             craneId, outriggerMode, boomLength,
-            d.distance, d.angle, state.actualLoad
+            d.distance, state.actualLoad
         );
         checks.push({
             type: 'dropLoad',
             index: i,
             obj: d.obj,
             distance: d.distance,
-            angle: d.angle,
             ...check,
             label: `卸荷 #${i + 1}`
         });

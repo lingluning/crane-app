@@ -8,7 +8,7 @@ import {
     placeCrane, placeLoadPick, placeLoadDrop, placePlate,  // ⭐
     handleSelect, snapToGrid, updateCounters,
     updateCraneRadius, updateCraneButton,
-    showToast, removeObjectFully, moveCrane,
+    showToast, removeObjectFully, translatePlaced, finalizePlacedMove,
     toggleSelection, rotateSelection, formGroupFromSelection,
     ungroupSelection, setSelection, findRootObject
 } from './tools.js';
@@ -28,15 +28,10 @@ import { checkSafety } from './safety-tools.js';
 
 import { downloadThreeViews } from './export.js';
 
-import { generateReport } from './export.js';
-
-import { loadFormFromLocalStorage, saveFormToLocalStorage } from './export.js';
-
-
 import { exportProjectJSON, importProjectJSON } from './export.js';
 
 import { updateSafetyDisplay } from './safety-display.js';
-import { getCrane, getMaxRadius } from './crane-database.js';
+import { getCrane, getMaxRadius, getAllCranes } from './crane-database.js';
 import { updateWeather, attachWeatherRefresh } from './weather.js';
 
 
@@ -125,6 +120,77 @@ window.addEventListener('click', (event) => {
     }
 });
 
+// ============= 移動平滑（拖拽 / 平移共用） =============
+// 指数衰减：alpha = 1 - exp(-stiffness * dt)。stiffness 越大跟手越紧。
+// dt を実測することで、フレームレートが変動しても見た目の追従感が変わらない。
+// 大きな残距離は 1 フレームで一気に追いつくため、マウス急加速時の遅延を抑える。
+const MOVE_STIFFNESS = 55;           // 越大越「跟手」
+const MOVE_CATCHUP_THRESHOLD = 4.0;  // 残距離(m) がこれを超えたら 1 フレームで詰める
+const MOVE_SNAP_EPS = 0.003;         // ここまで近づいたら端数吸収
+
+const moveSmoothing = {
+    targets: new Map(),   // obj -> { x, z }
+    running: false,
+    lastTime: 0
+};
+
+function setMoveTarget(obj, x, z) {
+    moveSmoothing.targets.set(obj, { x, z });
+    if (!moveSmoothing.running) {
+        moveSmoothing.running = true;
+        moveSmoothing.lastTime = 0;
+        requestAnimationFrame(smoothMoveTick);
+    }
+}
+
+function clearMoveTargets() {
+    moveSmoothing.targets.clear();
+}
+
+function smoothMoveTick(now) {
+    if (moveSmoothing.targets.size === 0) {
+        moveSmoothing.running = false;
+        moveSmoothing.lastTime = 0;
+        return;
+    }
+
+    // dt（秒）。初回は 1/60 と仮定。スパイクは 50ms にクランプ。
+    const last = moveSmoothing.lastTime;
+    const dt = last ? Math.min(0.05, (now - last) / 1000) : 1 / 60;
+    moveSmoothing.lastTime = now;
+
+    const alpha = 1 - Math.exp(-MOVE_STIFFNESS * dt);
+
+    moveSmoothing.targets.forEach((t, obj) => {
+        // 削除済みオブジェクトは smoothing からも外す
+        //（info-panel の点滅 / 余計な showInfo / orphan 生成を防止）
+        if (!state.placedObjects.includes(obj)) {
+            moveSmoothing.targets.delete(obj);
+            return;
+        }
+
+        const cx = obj.position.x;
+        const cz = obj.position.z;
+        const remX = t.x - cx;
+        const remZ = t.z - cz;
+        const remDist = Math.hypot(remX, remZ);
+
+        // (a) 既に十分近い → 完全に揃えて終了 + 半径円を地形に再フィット
+        if (remDist < MOVE_SNAP_EPS) {
+            translatePlaced(obj, remX, remZ, { light: true });
+            finalizePlacedMove(obj);
+            moveSmoothing.targets.delete(obj);
+            return;
+        }
+
+        // (b) 残距離が大きすぎる（マウスが急加速）→ 1 フレームで追いつく
+        const k = remDist > MOVE_CATCHUP_THRESHOLD ? 1.0 : alpha;
+        translatePlaced(obj, remX * k, remZ * k, { light: true });   // ⭐ ドラッグ中は軽量パス
+    });
+
+    requestAnimationFrame(smoothMoveTick);
+}
+
 // ============= 左键拖拽：移动选中的吊车 =============
 // 在「選択」工具下按住吊车拖动，按地面射线投影同步吊车位置（与摄像机角度无关）。
 const DRAG_THRESHOLD_PX = 4;
@@ -192,7 +258,7 @@ window.addEventListener('mousemove', (event) => {
     const crane = dragState.crane;
     const targetX = p.x + dragState.offsetX;
     const targetZ = p.z + dragState.offsetZ;
-    moveCrane(crane, targetX - crane.position.x, targetZ - crane.position.z);
+    setMoveTarget(crane, targetX, targetZ);   // ⭐ 1:1 スナップではなく毎フレーム lerp で追従
 });
 
 window.addEventListener('mouseup', (event) => {
@@ -344,13 +410,7 @@ function applyTranslate() {
     const dz = p.z - translateState.startZ;
 
     translateState.originals.forEach(({obj, x, z}) => {
-        const tx = x + dx, tz = z + dz;
-        if (obj.userData.type === 'crane') {
-            moveCrane(obj, tx - obj.position.x, tz - obj.position.z);
-        } else {
-            obj.position.x = tx;
-            obj.position.z = tz;
-        }
+        setMoveTarget(obj, x + dx, z + dz);   // ⭐ 平滑追従（commit/cancel 時は別途処理）
     });
 }
 
@@ -362,13 +422,9 @@ function commitTranslate() {
 
 function cancelTranslate() {
     if (!translateState.active) return;
+    clearMoveTargets();   // ⭐ 残った平滑ターゲットが原位復元を邪魔しないように
     translateState.originals.forEach(({obj, x, z}) => {
-        if (obj.userData.type === 'crane') {
-            moveCrane(obj, x - obj.position.x, z - obj.position.z);
-        } else {
-            obj.position.x = x;
-            obj.position.z = z;
-        }
+        translatePlaced(obj, x - obj.position.x, z - obj.position.z);   // 非 light → クレーンは Y も再フィット
     });
     translateState.active = false;
     translateState.originals = [];
@@ -518,32 +574,45 @@ document.getElementById('screenshot-btn').addEventListener('click', async () => 
     await downloadThreeViews();
 });
 
-// ============= 报告 =============
-document.getElementById('report-btn').addEventListener('click', () => {
-    document.getElementById('report-modal').classList.remove('hidden');
-});
+// ============= 計画書（CF-19 · A3）を埋め込みオーバーレイで開く =============
+//   index 内の #plan-overlay 内の iframe に crane-plan-a3.html を遅延ロードして表示。
+//   自動保存・PDF出力はオーバーレイ内のページが独自に処理する。
+(function () {
+    const overlay = document.getElementById('plan-overlay');
+    const frame   = document.getElementById('plan-frame');
+    const closeBtn = document.getElementById('plan-close');
 
-document.getElementById('rf-cancel').addEventListener('click', () => {
-    document.getElementById('report-modal').classList.add('hidden');
-});
+    function openPlan() {
+        // 初回オープン時のみソースを設定（以後は state を保持）
+        if (!frame.src || frame.src === 'about:blank') {
+            frame.src = './crane-plan-a3.html';
+        }
+        overlay.classList.remove('hidden');
+        // iframe の中で fit-to-width を再計算させる（display:none → flex で resize は発火しないので明示的に通知）
+        requestAnimationFrame(() => {
+            try { frame.contentWindow && frame.contentWindow.dispatchEvent(new Event('resize')); } catch (e) {}
+        });
+    }
+    function closePlan() {
+        overlay.classList.add('hidden');
+    }
 
-document.getElementById('rf-generate').addEventListener('click', async () => {
-    document.getElementById('report-modal').classList.add('hidden');
-    await generateReport();
-});
+    document.getElementById('report-btn').addEventListener('click', openPlan);
+    closeBtn.addEventListener('click', closePlan);
 
+    // iframe 内から閉じたい場合：parent に postMessage を送れば閉じる
+    window.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'crane-plan-close') closePlan();
+    });
 
-// 打开表单时加载之前的数据
-document.getElementById('report-btn').addEventListener('click', () => {
-    document.getElementById('report-modal').classList.remove('hidden');
-    loadFormFromLocalStorage();
-});
-
-// "一時保存"按钮
-document.getElementById('rf-save').addEventListener('click', () => {
-    saveFormToLocalStorage();
-    showToast('入力内容を一時保存しました', 'success');
-});
+    // Esc キーで閉じる（他のショートカットを潰さないよう、オーバーレイ表示中だけ）
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !overlay.classList.contains('hidden')) {
+            closePlan();
+            e.stopPropagation();
+        }
+    }, true);   // capture phase で先に拾う
+})();
 
 
 document.getElementById('export-json-btn').addEventListener('click', exportProjectJSON);
@@ -560,13 +629,16 @@ document.getElementById('import-file').addEventListener('change', (e) => {
 
 document.getElementById('toggle-center-btn').addEventListener('click', () => {
     state.showCenterPoints = !state.showCenterPoints;
-    
-    // 更新所有中心点的显示状态
+
     state.placedObjects.forEach(obj => {
         if (obj.userData.centerMarker) {
             obj.userData.centerMarker.visible = state.showCenterPoints;
         }
     });
+
+    // ボタンの on/off 表示を同期
+    document.getElementById('toggle-center-btn')
+        .classList.toggle('on', state.showCenterPoints);
 });
 
 // 定时更新安全 / 距离显示
@@ -613,8 +685,7 @@ function updateOutriggerOptions() {
     Object.values(crane.outrigger.modes).forEach(mode => {
         const option = document.createElement('option');
         option.value = mode.id;
-        const areaLabel = mode.workingArea === 'side' ? ' (側方のみ)' : ' (全周)';
-        option.textContent = `${mode.label}${areaLabel}`;
+        option.textContent = mode.label;
         if (mode.id === state.currentOutriggerMode) option.selected = true;
         select.appendChild(option);
     });
@@ -661,10 +732,67 @@ document.getElementById('outrigger-select').addEventListener('change', (e) => {
     syncRadiusSliderUpperBound();
 });
 
+// ============= 機種（クレーン型式）プルダウン =============
+function updateCraneModelOptions() {
+    const select = document.getElementById('crane-model-select');
+    if (!select) return;
+
+    select.innerHTML = '';
+    getAllCranes().forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.displayName;
+        if (c.id === state.currentCraneId) opt.selected = true;
+        select.appendChild(opt);
+    });
+}
+
+document.getElementById('crane-model-select').addEventListener('change', (e) => {
+    const newId = e.target.value;
+    const newCrane = getCrane(newId);
+    if (!newCrane) return;
+
+    state.currentCraneId = newId;
+
+    // 配置済みクレーンがあれば userData を新しい型式に差し替え
+    const placed = state.placedObjects.find(o => o.userData.type === 'crane');
+    if (placed) {
+        placed.userData.craneId = newId;
+        placed.userData.craneData = newCrane;
+        placed.userData.centerOffset = newCrane.centerPoint;
+    }
+
+    // ラベル更新（吊荷情報パネルの右肩）
+    const idLabel = document.getElementById('crane-id-label');
+    if (idLabel) idLabel.textContent = newCrane.displayName || newId;
+
+    // ブーム長 / アウトリガ は型式ごとに違うので再構築。
+    // 既存値が新型式に無い場合は updateBoomLengthOptions / updateOutriggerOptions
+    // 内で先頭値に退避する。
+    updateBoomLengthOptions();
+    updateOutriggerOptions();
+    state.currentBoomLength = parseFloat(
+        document.getElementById('boom-length-select').value
+    );
+    state.currentOutriggerMode = document.getElementById('outrigger-select').value;
+    if (placed) placed.userData.outriggerMode = state.currentOutriggerMode;
+
+    syncRadiusSliderUpperBound();
+    showToast(`機種を切替: ${newCrane.displayName}`, 'success');
+});
+
 // 启动时初始化下拉
+updateCraneModelOptions();
 updateBoomLengthOptions();
 updateOutriggerOptions();
 syncRadiusSliderUpperBound();
+
+// 起動時にラベルも反映
+{
+    const c0 = getCrane(state.currentCraneId);
+    const idLabel0 = document.getElementById('crane-id-label');
+    if (c0 && idLabel0) idLabel0.textContent = c0.displayName || c0.id;
+}
 
 
 

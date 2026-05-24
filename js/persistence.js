@@ -3,7 +3,8 @@ import { scene } from './scene.js';
 import { state } from './state.js';
 import {
     placeCrane, placeLoadPick, placeLoadDrop, placePlate,
-    updateCraneRadius, updateCounters, updateCraneButton
+    updateCraneRadius, updateCounters, updateCraneButton,
+    removeObjectFully
 } from './tools.js';
 
 // ============= 序列化 =============
@@ -34,11 +35,9 @@ export function serialize() {
 
 // ============= 反序列化 =============
 export function deserialize(data) {
-    // 清空
-    state.placedObjects.forEach(obj => {
-        if (obj.userData.radiusCircle) scene.remove(obj.userData.radiusCircle);
-        scene.remove(obj);
-    });
+    // 清空：removeObjectFully で centerMarker / border / textLabel / arrows なども確実に回収
+    // （以前は radiusCircle と obj 自身しか外していなくて、中心マーカーが幽霊化していた）
+    state.placedObjects.slice().forEach(obj => removeObjectFully(obj));
     state.placedObjects.length = 0;
     state.selectedObject = null;
     state.selectedObjects = [];

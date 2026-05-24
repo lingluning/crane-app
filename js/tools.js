@@ -24,14 +24,36 @@ export function showToast(message, type = 'info', duration = 2500) {
 }
 
 
+// ============= GPU リソース解放 =============
+// scene.remove() だけでは geometry/material は GPU に残る → 明示的に dispose
+// （半径円や中心マーカーは頻繁に作り直すため、放置するとメモリリークになる）
+function disposeObject3D(obj) {
+    if (!obj) return;
+    obj.traverse(c => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+            if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+            else c.material.dispose();
+        }
+    });
+}
+
 // ============= 完整移除一个 placedObject =============
 // 清理 scene 中所有附属对象 + CSS2DObject DOM 元素 + state.placedObjects 索引
 export function removeObjectFully(obj) {
     if (!obj) return;
 
     if (obj.userData.border)       scene.remove(obj.userData.border);
-    if (obj.userData.radiusCircle) scene.remove(obj.userData.radiusCircle);
-    if (obj.userData.centerMarker) scene.remove(obj.userData.centerMarker);
+    if (obj.userData.radiusCircle) {
+        scene.remove(obj.userData.radiusCircle);
+        disposeObject3D(obj.userData.radiusCircle);
+        obj.userData.radiusCircle = null;   // ⭐ smoothing 収束時の orphan 再生成防止
+    }
+    if (obj.userData.centerMarker) {
+        scene.remove(obj.userData.centerMarker);
+        disposeObject3D(obj.userData.centerMarker);
+        obj.userData.centerMarker = null;
+    }
     if (obj.userData.arrows)       obj.userData.arrows.forEach(a => scene.remove(a));
     if (obj.userData.balls)        obj.userData.balls.forEach(b => scene.remove(b));
 
@@ -491,12 +513,7 @@ export function rotateSelection(angleRad) {
         const newX = cx + dx * cos + dz * sin;
         const newZ = cz - dx * sin + dz * cos;
 
-        if (o.userData.type === 'crane') {
-            moveCrane(o, newX - o.position.x, newZ - o.position.z);
-        } else {
-            o.position.x = newX;
-            o.position.z = newZ;
-        }
+        translatePlaced(o, newX - o.position.x, newZ - o.position.z);
         o.rotation.y += angleRad;
     });
 }
@@ -512,27 +529,59 @@ export function findRootObject(mesh) {
     return null;
 }
 
+// ハイライト適用：emissive 対応マテリアルは emissive を青で発光、
+// 非対応 (MeshBasicMaterial / LineBasicMaterial 等) はベースカラーを橙黄に変える。
+const HIGHLIGHT_EMISSIVE = 0x0044ff;
+const HIGHLIGHT_BASE_COLOR = 0xffaa00;
+
+function _highlightOne(node) {
+    if (!node.material) return;
+    const mat = node.material;
+    if (mat.emissive) {
+        if (node.userData._origEmissive === undefined) {
+            node.userData._origEmissive = mat.emissive.getHex();
+        }
+        mat.emissive.setHex(HIGHLIGHT_EMISSIVE);
+    } else if (mat.color) {
+        if (node.userData._origColor === undefined) {
+            node.userData._origColor = mat.color.getHex();
+        }
+        mat.color.setHex(HIGHLIGHT_BASE_COLOR);
+    }
+}
+
+function _restoreOne(node) {
+    if (!node.material) return;
+    const mat = node.material;
+    if (node.userData._origEmissive !== undefined && mat.emissive) {
+        mat.emissive.setHex(node.userData._origEmissive);
+        delete node.userData._origEmissive;
+    }
+    if (node.userData._origColor !== undefined && mat.color) {
+        mat.color.setHex(node.userData._origColor);
+        delete node.userData._origColor;
+    }
+}
+
 export function applyHighlight(obj) {
     obj.traverse(child => {
-        if (child.isMesh && child.material && child.material.emissive) {
-            if (child.userData._origEmissive === undefined) {
-                child.userData._origEmissive = child.material.emissive.getHex();
-            }
-            child.material.emissive.setHex(0x0044ff);
+        if (child.isMesh || child.isLine || child.isLineSegments || child.isLineLoop) {
+            _highlightOne(child);
         }
     });
+    // userData に付随する線・矢印もハイライト（scene 直下にあるため traverse では拾えない）
+    if (obj.userData.border) obj.userData.border.traverse(_highlightOne);
+    if (obj.userData.arrows) obj.userData.arrows.forEach(a => a.traverse(_highlightOne));
 }
 
 export function clearHighlight(obj) {
     obj.traverse(child => {
-        if (child.isMesh && child.material && child.material.emissive) {
-            if (child.userData._origEmissive !== undefined) {
-                child.material.emissive.setHex(child.userData._origEmissive);
-            } else {
-                child.material.emissive.setHex(0x000000);
-            }
+        if (child.isMesh || child.isLine || child.isLineSegments || child.isLineLoop) {
+            _restoreOne(child);
         }
     });
+    if (obj.userData.border) obj.userData.border.traverse(_restoreOne);
+    if (obj.userData.arrows) obj.userData.arrows.forEach(a => a.traverse(_restoreOne));
 }
 
 // ============= UI 更新 =============
@@ -591,19 +640,43 @@ export function updateCraneButton() {
 }
 
 export function updateCraneRadius(crane, radiusMeters) {
-    if (crane.userData.radiusCircle) {
-        scene.remove(crane.userData.radiusCircle);
-    }
-
-    const newCircle = createTerrainFollowingCircle(crane.position, radiusMeters);
-    scene.add(newCircle);
-
-    crane.userData.radiusCircle = newCircle;
     crane.userData.workRadius = radiusMeters;
+    if (crane.userData.radiusCircle) {
+        rebuildCraneRadiusCircle(crane);
+    } else {
+        // 初回（placeCrane 直後）はまだ円が無い場合があるので作る
+        const newCircle = createTerrainFollowingCircle(crane.position, radiusMeters);
+        scene.add(newCircle);
+        crane.userData.radiusCircle = newCircle;
+    }
+}
+
+// ============= 統一移動 API =============
+// 任意の placedObject を (dx, dz) だけ平行移動。クレーンは付属物
+// （中心マーカー・作業半径円）の同期も含む。型ディスパッチを 1 か所に集約。
+export function translatePlaced(obj, dx, dz, opts = {}) {
+    if (obj.userData.type === 'crane') {
+        moveCrane(obj, dx, dz, opts);
+    } else {
+        obj.position.x += dx;
+        obj.position.z += dz;
+    }
+}
+
+// 移動完了時（ドラッグ松手・smoothing 収束・コミットなど）に呼ぶ。
+// クレーンだけ地形 Y 再サンプリング + 半径円の精確再構築が要る。
+export function finalizePlacedMove(obj) {
+    if (obj.userData.type === 'crane') {
+        rebuildCraneRadiusCircle(obj);
+    }
 }
 
 // 平移选中的吊车（同步移动中心点 + 重建作业半径圆）
-export function moveCrane(crane, dx, dz) {
+// opts.light=true: ドラッグ中の毎フレーム呼び出し用。
+//   半径円（96 セグメント TubeGeometry + 96 回の地形 raycast）を再生成せず、
+//   平行移動するだけで済ませる。重い処理を毎フレームから排除。
+//   ドラッグ確定 (mouseup / commit) 後に rebuildCraneRadiusCircle で精確に作り直す。
+export function moveCrane(crane, dx, dz, opts = {}) {
     crane.position.x += dx;
     crane.position.z += dz;
 
@@ -613,16 +686,54 @@ export function moveCrane(crane, dx, dz) {
     }
 
     if (crane.userData.radiusCircle) {
-        scene.remove(crane.userData.radiusCircle);
-        const newCircle = createTerrainFollowingCircle(
-            crane.position,
-            crane.userData.workRadius || 10
-        );
-        scene.add(newCircle);
-        crane.userData.radiusCircle = newCircle;
+        if (opts.light) {
+            crane.userData.radiusCircle.position.x += dx;
+            crane.userData.radiusCircle.position.z += dz;
+        } else {
+            // 非 light：地形 Y も含めて完全に作り直す
+            rebuildCraneRadiusCircle(crane);
+        }
     }
 
     showInfo(crane);
+}
+
+// 指定 (x,z) の地面 Y を 1 本の下向きレイで取得。site が未読込なら null。
+function sampleGroundY(x, z) {
+    if (!models.siteModel) return null;
+    const siteMeshes = [];
+    models.siteModel.traverse(c => { if (c.isMesh) siteMeshes.push(c); });
+    if (siteMeshes.length === 0) return null;
+
+    const ray = new THREE.Raycaster();
+    ray.set(new THREE.Vector3(x, 500, z), new THREE.Vector3(0, -1, 0));
+    const hits = ray.intersectObjects(siteMeshes, true);
+    return hits.length > 0 ? hits[0].point.y : null;
+}
+
+// 拖動収束/松手时调用：light モードで累積した tube.position オフセットを精算 +
+// 地形 Y 再サンプリングで吊車本体・中心マーカー・半径円すべてを地面に再フィット。
+export function rebuildCraneRadiusCircle(crane) {
+    // 地形 Y を採り直して、吊車と中心マーカーも一緒に持ち上げる/沈める
+    const groundY = sampleGroundY(crane.position.x, crane.position.z);
+    if (groundY !== null) {
+        crane.position.y = groundY;
+        if (crane.userData.centerMarker) {
+            crane.userData.centerMarker.position.y = groundY + 0.1;
+        }
+    }
+
+    if (!crane.userData.radiusCircle) return;
+
+    const old = crane.userData.radiusCircle;
+    scene.remove(old);
+    disposeObject3D(old);   // ⭐ GPU リソース解放
+    const newCircle = createTerrainFollowingCircle(
+        crane.position,
+        crane.userData.workRadius || 10
+    );
+    scene.add(newCircle);
+    crane.userData.radiusCircle = newCircle;
 }
 
 // 绕中心采样一圈点，每点向下射线打地形拿到真实 Y，

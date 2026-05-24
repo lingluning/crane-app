@@ -160,8 +160,20 @@ labelRenderer.setSize(window.innerWidth, window.innerHeight);
 labelRenderer.domElement.style.position = 'fixed';
 labelRenderer.domElement.style.top = '0';
 labelRenderer.domElement.style.left = '0';
+labelRenderer.domElement.style.zIndex = '3';            // canvas (2) より前、パネル (30+) より後ろ
 labelRenderer.domElement.style.pointerEvents = 'none';  // 不挡鼠标
 document.body.appendChild(labelRenderer.domElement);
+
+// ============= ウィンドウリサイズ追従 =============
+//   レンダラと CSS2D ラベル層、カメラのアスペクト比をブラウザサイズに合わせて更新する。
+window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    labelRenderer.setSize(w, h);
+});
 
 
 
@@ -178,7 +190,7 @@ scene.add(directionalLight);
 // ============= 卡通材质工具（SketchUp 风格 toon + 描边） =============
 // 4 阶灰度渐变图 → MeshToonMaterial 的台阶式着色
 const toonGradient = new THREE.DataTexture(
-    new Uint8Array([140, 175, 215, 255]),       // 抬高暗部，避免死黑
+    new Uint8Array([175, 200, 225, 255]),       // 暗部进一步抬高，避免死黑
     4, 1,
     THREE.RedFormat
 );
@@ -186,34 +198,55 @@ toonGradient.magFilter = THREE.NearestFilter;
 toonGradient.minFilter = THREE.NearestFilter;
 toonGradient.needsUpdate = true;
 
-function toToon(orig) {
-    if (!orig) return new THREE.MeshToonMaterial({ color: 0xffffff, gradientMap: toonGradient });
+// ⭐ クレーン専用：5 段、トップに鋭い 255 ピークを置いて
+// アニメ調メタリックなハイライトを再現する。コントラストを広げ
+// 中段を意図的に少し沈ませることで「金属の光沢」感を出す。
+const toonGradientMetal = new THREE.DataTexture(
+    new Uint8Array([155, 185, 210, 240, 255]),
+    5, 1,
+    THREE.RedFormat
+);
+toonGradientMetal.magFilter = THREE.NearestFilter;
+toonGradientMetal.minFilter = THREE.NearestFilter;
+toonGradientMetal.needsUpdate = true;
+
+function toToon(orig, gradient = toonGradient, metallic = false) {
+    if (!orig) {
+        return new THREE.MeshToonMaterial({
+            color: 0xffffff,
+            gradientMap: gradient,
+            emissive: metallic ? 0x1a1a1a : 0x000000   // 金属に微かなセルフ発光でツヤ感
+        });
+    }
     const toon = new THREE.MeshToonMaterial({
         color: orig.color ? orig.color.clone() : new THREE.Color(0xffffff),
         map: orig.map || null,
-        gradientMap: toonGradient,
+        gradientMap: gradient,
         side: orig.side ?? THREE.FrontSide,
         transparent: orig.transparent ?? false,
-        opacity: orig.opacity ?? 1
+        opacity: orig.opacity ?? 1,
+        emissive: metallic ? 0x1a1a1a : 0x000000
     });
     return toon;
 }
 
-export function applyToonStyle(root) {
+export function applyToonStyle(root, { metallic = false } = {}) {
+    const gradient = metallic ? toonGradientMetal : toonGradient;
+
     root.traverse(child => {
         if (!child.isMesh || child.userData._toonApplied) return;
 
         if (Array.isArray(child.material)) {
-            child.material = child.material.map(toToon);
+            child.material = child.material.map(m => toToon(m, gradient, metallic));
         } else {
-            child.material = toToon(child.material);
+            child.material = toToon(child.material, gradient, metallic);
         }
 
-        // 黑色边缘描边（阈值 30°，只画明显折角）
+        // 边缘描边：纯黑 → 深灰，让整体色调更柔和
         const edges = new THREE.EdgesGeometry(child.geometry, 30);
         const outline = new THREE.LineSegments(
             edges,
-            new THREE.LineBasicMaterial({ color: 0x000000 })
+            new THREE.LineBasicMaterial({ color: 0x4a4a4a })
         );
         outline.userData._isOutline = true;
         child.add(outline);
@@ -248,9 +281,19 @@ export function loadModels(onAllLoaded) {
         }
     }
     
-    gltfLoader.load('./models/crane_TADANO_GR-250N.glb', (gltf) => {
-        models.craneTemplate = gltf.scene;
-        applyToonStyle(models.craneTemplate);
+    gltfLoader.load('./models/crane_25T.glb', (gltf) => {
+        // GLB の原点が車体中心からずれているため、wrapper を被せて
+        // 内側の gltf.scene を X/Z 方向に逆オフセットし、wrapper の原点を
+        // 視覚的な中心に揃える。これで crane.position.copy(point) が
+        // 中心マーカー・作業半径円と一致する。Y はモデル元の高さを維持。
+        const wrapper = new THREE.Group();
+        const box = new THREE.Box3().setFromObject(gltf.scene);
+        const center = box.getCenter(new THREE.Vector3());
+        gltf.scene.position.set(-center.x, 0, -center.z);
+        wrapper.add(gltf.scene);
+
+        models.craneTemplate = wrapper;
+        applyToonStyle(models.craneTemplate, { metallic: true });   // ⭐ クレーンだけ金属調トゥーン
         console.log('✅ 吊车模板加载完成');
         checkDone();
     });

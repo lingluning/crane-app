@@ -8,9 +8,9 @@
  *   ]
  *
  * outriggerMode 通用 key:
- *   maxFull   - 最大張出（全周作業可）
- *   mid61/mid50/mid38 - 中間張出（側方のみ）
- *   minRetract / min  - 最縮小（側方のみ）
+ *   maxFull   - 最大張出
+ *   mid61/mid50/mid38 - 中間張出
+ *   minRetract / min  - 最縮小
  *
  * ⚠ 仅供参考。作业前必须以实际负荷率表为准。
  */
@@ -55,33 +55,27 @@ export const CRANE_DATABASE = {
                     id: 'maxFull',
                     label: 'アウトリガ最大張出',
                     extensionWidth: 6.6,
-                    workingArea: 'full',
                     note: '最大能力。基本この状態で計画'
                 },
                 mid61: {
                     id: 'mid61',
                     label: 'アウトリガ中間張出 6.1m',
-                    extensionWidth: 6.1,
-                    workingArea: 'side',
-                    note: '前後への吊上げ禁止'
+                    extensionWidth: 6.1
                 },
                 mid50: {
                     id: 'mid50',
                     label: 'アウトリガ中間張出 5.0m',
-                    extensionWidth: 5.0,
-                    workingArea: 'side'
+                    extensionWidth: 5.0
                 },
                 mid38: {
                     id: 'mid38',
                     label: 'アウトリガ中間張出 3.8m',
-                    extensionWidth: 3.8,
-                    workingArea: 'side'
+                    extensionWidth: 3.8
                 },
                 minRetract: {
                     id: 'minRetract',
                     label: 'アウトリガ最縮小張出',
-                    extensionWidth: 2.31,
-                    workingArea: 'side'
+                    extensionWidth: 2.31
                 }
             },
 
@@ -173,20 +167,17 @@ export const CRANE_DATABASE = {
                 maxFull: {
                     id: 'maxFull',
                     label: 'アウトリガ最大張出',
-                    extensionWidth: 5.4,
-                    workingArea: 'full'
+                    extensionWidth: 5.4
                 },
                 mid: {
                     id: 'mid',
                     label: 'アウトリガ中間張出',
-                    extensionWidth: 4.8,
-                    workingArea: 'side'
+                    extensionWidth: 4.8
                 },
                 min: {
                     id: 'min',
                     label: 'アウトリガ最縮小',
-                    extensionWidth: 3.5,
-                    workingArea: 'side'
+                    extensionWidth: 3.5
                 }
             },
             positions: [
@@ -368,36 +359,6 @@ export function getMaxRadius(craneId, outriggerMode, boomLength) {
     const curve = getBoomLoadCurve(craneId, outriggerMode, boomLength);
     if (!curve || !curve.points || curve.points.length === 0) return 15;
     return curve.points[curve.points.length - 1].radius;
-}
-
-/**
- * 检查作業区域限制（全周 / 側方限定）
- * @param {number} angle 载荷相对吊车的角度（度，0 = 正前）
- */
-export function checkWorkingArea(craneId, outriggerMode, angle) {
-    const crane = CRANE_DATABASE[craneId];
-    if (!crane) return { ok: true };
-
-    const mode = crane.outrigger.modes[outriggerMode];
-    if (!mode) return { ok: true };
-
-    if (mode.workingArea === 'full') return { ok: true };
-
-    // 側方限定：前后 ±30° 禁止
-    const normalizedAngle = ((angle % 360) + 360) % 360;
-
-    const isFrontBack =
-        (normalizedAngle >= 330 || normalizedAngle <= 30) ||
-        (normalizedAngle >= 150 && normalizedAngle <= 210);
-
-    if (isFrontBack && mode.workingArea === 'side') {
-        return {
-            ok: false,
-            message: '前後への吊上げ禁止（側方のみ作業可）'
-        };
-    }
-
-    return { ok: true };
 }
 
 /**
