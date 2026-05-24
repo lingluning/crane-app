@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>クレーン中心キャリブレーション</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+        height: 100%; overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #1c1c1c; color: #e0e0e0;
+    }
+
+    #toolbar {
+        position: fixed; top: 0; left: 0; right: 0; height: 48px;
+        padding: 0 16px;
+        background: #262626; border-bottom: 1px solid #3a3a3a;
+        display: flex; align-items: center; gap: 16px;
+        z-index: 10; font-size: 13px;
+    }
+    #toolbar .title { font-weight: 600; letter-spacing: 0.02em; }
+    #toolbar .hint { color: #888; font-size: 12px; }
+    #toolbar .spacer { flex: 1; }
+    #toolbar button {
+        background: #353535; border: 1px solid #4a4a4a; color: #e0e0e0;
+        padding: 7px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+        font-family: inherit; transition: all 0.12s;
+    }
+    #toolbar button:hover { background: #444; border-color: #5a8cff; color: #5a8cff; }
+    #toolbar button.active {
+        background: #2c4d8a; border-color: #5a8cff; color: #cfe0ff;
+    }
+    #toolbar button.primary {
+        background: #2e6e3e; border-color: #4ea25f; color: #d6f5dc;
+    }
+    #toolbar button.primary:hover { background: #3a8a4d; border-color: #6cc77e; color: #fff; }
+    #toolbar button.primary.dirty {
+        background: #8a5a1e; border-color: #d49b3a; color: #ffe7b8;
+        animation: pulse 1.6s ease-in-out infinite;
+    }
+    #toolbar button.primary.dirty:hover { background: #a3702a; }
+    @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(212, 155, 58, 0.0); }
+        50%      { box-shadow: 0 0 0 4px rgba(212, 155, 58, 0.25); }
+    }
+    .toolbar-group {
+        display: flex; gap: 0;
+    }
+    .toolbar-group button { border-radius: 0; }
+    .toolbar-group button:first-child { border-radius: 4px 0 0 4px; }
+    .toolbar-group button:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+
+    #canvas-container { position: absolute; inset: 48px 0 44px 0; }
+
+    #status {
+        position: fixed; bottom: 0; left: 0; right: 0; height: 44px;
+        padding: 0 16px;
+        background: #262626; border-top: 1px solid #3a3a3a;
+        display: flex; align-items: center; gap: 24px;
+        z-index: 10; font-size: 12px;
+        font-family: 'JetBrains Mono', 'Menlo', monospace;
+    }
+    #status .label { color: #888; }
+    #status .val { color: #ffaa00; font-weight: 600; }
+    #status .saved-tag {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 3px 10px; border-radius: 10px;
+        background: rgba(70, 200, 100, 0.15); color: #4eda7a;
+        font-size: 11px; transition: all 0.3s;
+    }
+    #status .saved-tag.flash {
+        background: rgba(70, 200, 100, 0.35); color: #6efb96;
+    }
+    #status .saved-tag.unsaved {
+        background: rgba(212, 155, 58, 0.18); color: #f0b860;
+    }
+    #status .hint-right { margin-left: auto; color: #777; font-size: 11px; }
+
+    #loading {
+        position: fixed; inset: 0;
+        background: rgba(28, 28, 28, 0.95);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 100; font-size: 14px; color: #aaa;
+    }
+
+    #legend {
+        position: absolute; top: 60px; right: 14px;
+        background: rgba(38, 38, 38, 0.9); border: 1px solid #3a3a3a;
+        padding: 10px 12px; border-radius: 5px;
+        font-size: 11px; color: #ccc;
+        font-family: 'JetBrains Mono', 'Menlo', monospace;
+        line-height: 1.7;
+    }
+    #legend .swatch {
+        display: inline-block; width: 10px; height: 10px;
+        border-radius: 50%; margin-right: 6px; vertical-align: middle;
+    }
+    #legend .red    { background: #ff3344; }
+    #legend .gray   { background: #888;    }
+    #legend .blue   { background: #5a8cff; }
+</style>
+</head>
+<body>
+    <div id="toolbar">
+        <div class="title">🎯 クレーン中心キャリブレーション</div>
+        <div class="hint">クリックで中心を設定 → 「保存」で確定</div>
+        <div class="spacer"></div>
+        <div class="toolbar-group">
+            <button id="view-top-btn" class="active" title="上面ビュー (固定)">上面</button>
+            <button id="view-3d-btn"  title="3D ビュー (自由回転)">3D</button>
+        </div>
+        <button id="reset-btn">既定値に戻す</button>
+        <button id="save-btn" class="primary" title="現在の中心位置を localStorage に保存 (Ctrl/Cmd + S)">保存</button>
+        <button id="open-main-btn">メインアプリへ ↗</button>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div id="legend">
+        <div><span class="swatch red"></span>現在の中心（保存値）</div>
+        <div><span class="swatch gray"></span>BB 推定の既定値</div>
+        <div><span class="swatch blue"></span>GLB 原点</div>
+    </div>
+
+    <div id="status">
+        <div><span class="label">X:</span> <span class="val" id="val-x">—</span> m</div>
+        <div><span class="label">Z:</span> <span class="val" id="val-z">—</span> m</div>
+        <div class="saved-tag" id="saved-tag">● 保存済み</div>
+        <div class="hint-right">メインアプリをリロードすると反映</div>
+    </div>
+
+    <div id="loading">モデル読込中…</div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="./js/calibrate.js?v=5"></script>
+</body>
+</html>

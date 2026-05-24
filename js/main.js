@@ -1,6 +1,6 @@
-import { 
+import {
     scene, camera, raycaster, mouse,
-    loadModels, startAnimationLoop, getGroundIntersect 
+    loadModels, startAnimationLoop, getGroundIntersect
 } from './scene.js';
 
 import {
@@ -521,7 +521,7 @@ document.getElementById('radius-slider').addEventListener('input', (e) => {
 
 document.getElementById('rotation-slider').addEventListener('input', (e) => {
     if (!state.selectedObject || state.selectedObject.userData.type !== 'crane') return;
-    
+
     const angleDeg = parseFloat(e.target.value);
     document.getElementById('rotation-value').textContent = angleDeg;
     state.selectedObject.rotation.y = (angleDeg * Math.PI) / 180;

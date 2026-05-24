@@ -209,9 +209,10 @@ export function placeCrane(point) {
     
     scene.add(crane);
     state.placedObjects.push(crane);
-    
-    // ⭐ 加中心点标记
-    const centerMarker = createCenterMarker(point);
+
+    // ⭐ 加中心点标记（crane を渡すとメッシュ上面に乗る）
+    crane.updateMatrixWorld(true);   // raycast 前に world matrix を確定
+    const centerMarker = createCenterMarker(point, crane);
     scene.add(centerMarker);
     crane.userData.centerMarker = centerMarker;
     
@@ -228,10 +229,25 @@ export function placeCrane(point) {
     selectTool('select');
 }
 
-// ⭐ 新函数：中心点标记
-function createCenterMarker(position) {
+// 指定 (x, z) におけるクレーン本体メッシュの最上面 Y を取得。
+// 真上から下向きにレイを撃って、当たれば Y を返す。当たらなければ null。
+function findCraneTopY(craneRoot, x, z) {
+    if (!craneRoot) return null;
+    const meshes = [];
+    craneRoot.traverse(c => { if (c.isMesh) meshes.push(c); });
+    if (meshes.length === 0) return null;
+
+    const ray = new THREE.Raycaster();
+    ray.set(new THREE.Vector3(x, 1000, z), new THREE.Vector3(0, -1, 0));
+    const hits = ray.intersectObjects(meshes, false);
+    return hits.length > 0 ? hits[0].point.y : null;
+}
+
+// ⭐ 中心点マーカー作成。クレーン躯体が与えられたらメッシュ上面に乗せる、
+//   なければ地面 +0.1。Y のみ動的に計算する点に注意。
+function createCenterMarker(position, craneRoot) {
     const group = new THREE.Group();
-    
+
     // 红色十字（2 条线）—— 关掉深度测试，避免被吊车实体遮住
     const lineMat = new THREE.LineBasicMaterial({
         color: 0xff0000,
@@ -242,7 +258,6 @@ function createCenterMarker(position) {
 
     const size = 0.5;
 
-    // X 方向线
     const xGeom = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(-size, 0, 0),
         new THREE.Vector3(size, 0, 0)
@@ -251,7 +266,6 @@ function createCenterMarker(position) {
     xLine.renderOrder = 999;
     group.add(xLine);
 
-    // Z 方向线
     const zGeom = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, -size),
         new THREE.Vector3(0, 0, size)
@@ -260,7 +274,6 @@ function createCenterMarker(position) {
     zLine.renderOrder = 999;
     group.add(zLine);
 
-    // 中心圆点
     const sphereGeom = new THREE.SphereGeometry(0.1);
     const sphereMat = new THREE.MeshBasicMaterial({
         color: 0xff0000,
@@ -270,13 +283,15 @@ function createCenterMarker(position) {
     const sphere = new THREE.Mesh(sphereGeom, sphereMat);
     sphere.renderOrder = 999;
     group.add(sphere);
-    
-    // 放在地面上
-    group.position.copy(position);
-    group.position.y += 0.1;
-    
+
+    // 配置：X/Z は wrapper 原点、Y はクレーン上面（無ければ地面 +0.1）
+    group.position.x = position.x;
+    group.position.z = position.z;
+    const topY = findCraneTopY(craneRoot, position.x, position.z);
+    group.position.y = (topY !== null) ? topY + 0.05 : position.y + 0.1;
+
     group.visible = state.showCenterPoints;
-    
+
     return group;
 }
 
@@ -719,7 +734,11 @@ export function rebuildCraneRadiusCircle(crane) {
     if (groundY !== null) {
         crane.position.y = groundY;
         if (crane.userData.centerMarker) {
-            crane.userData.centerMarker.position.y = groundY + 0.1;
+            // Y はクレーン本体メッシュ上面に合わせる（無ければ地面 +0.1）
+            crane.updateMatrixWorld(true);
+            const topY = findCraneTopY(crane, crane.position.x, crane.position.z);
+            crane.userData.centerMarker.position.y =
+                (topY !== null) ? topY + 0.05 : groundY + 0.1;
         }
     }
 

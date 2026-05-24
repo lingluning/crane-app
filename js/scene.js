@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { checkSafety } from './safety-tools.js';
+import { state } from './state.js';
 
 
 // ============= 场景基础 =============
@@ -261,6 +262,64 @@ export function applyToonStyle(root, { metallic = false } = {}) {
 export const raycaster = new THREE.Raycaster();
 export const mouse = new THREE.Vector2();
 
+// ============= クレーン中心調整 (旋回中心) =============
+// GLB ローカル座標系の (x, z)。wrapper の原点をここに置く。
+// ユーザーが UI で微調整 → setCraneCalibration → 全インスタンスに反映 + 保存。
+const CALIBRATION_STORAGE_KEY = 'crane_pivot_offset';
+
+export const craneCalibration = {
+    pivotX: 0,
+    pivotZ: 0,
+    defaultX: 0,    // GLB ロード時に計算（リセット用）
+    defaultZ: 0,
+    isCustom: false
+};
+
+function loadStoredCalibration() {
+    try {
+        const s = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+        if (!s) return null;
+        const v = JSON.parse(s);
+        return (typeof v.x === 'number' && typeof v.z === 'number') ? v : null;
+    } catch { return null; }
+}
+
+function saveStoredCalibration(x, z) {
+    try { localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify({ x, z })); }
+    catch { /* ignore */ }
+}
+
+// 既にシーンに置かれたクレーン + テンプレ全部に新オフセットを反映
+function applyPivotToAll(x, z) {
+    if (models.craneTemplate && models.craneTemplate.children[0]) {
+        models.craneTemplate.children[0].position.set(-x, 0, -z);
+    }
+    state.placedObjects.forEach(obj => {
+        if (obj.userData.type === 'crane' && obj.children[0]) {
+            obj.children[0].position.set(-x, 0, -z);
+        }
+    });
+}
+
+export function setCraneCalibration(x, z) {
+    craneCalibration.pivotX = x;
+    craneCalibration.pivotZ = z;
+    craneCalibration.isCustom = (
+        Math.abs(x - craneCalibration.defaultX) > 1e-6 ||
+        Math.abs(z - craneCalibration.defaultZ) > 1e-6
+    );
+    saveStoredCalibration(x, z);
+    applyPivotToAll(x, z);
+}
+
+export function resetCraneCalibration() {
+    try { localStorage.removeItem(CALIBRATION_STORAGE_KEY); } catch {}
+    craneCalibration.pivotX = craneCalibration.defaultX;
+    craneCalibration.pivotZ = craneCalibration.defaultZ;
+    craneCalibration.isCustom = false;
+    applyPivotToAll(craneCalibration.defaultX, craneCalibration.defaultZ);
+}
+
 // ============= 模型加载 =============
 const gltfLoader = new GLTFLoader();
 
@@ -282,19 +341,38 @@ export function loadModels(onAllLoaded) {
     }
     
     gltfLoader.load('./models/crane_25T.glb', (gltf) => {
-        // GLB の原点が車体中心からずれているため、wrapper を被せて
-        // 内側の gltf.scene を X/Z 方向に逆オフセットし、wrapper の原点を
-        // 視覚的な中心に揃える。これで crane.position.copy(point) が
-        // 中心マーカー・作業半径円と一致する。Y はモデル元の高さを維持。
+        // GLB の原点とブーム下（旋回中心）が一致しないため、wrapper を被せて
+        // 内側 gltf.scene を逆オフセットし wrapper 原点 = 旋回中心 に揃える。
+        //
+        // デフォルトは BB 長軸の 1/3 比率で推定。実際の位置はユーザーが
+        // 「中心調整」UI で微調整 → localStorage で永続化される。
         const wrapper = new THREE.Group();
         const box = new THREE.Box3().setFromObject(gltf.scene);
-        const center = box.getCenter(new THREE.Vector3());
-        gltf.scene.position.set(-center.x, 0, -center.z);
+
+        craneCalibration.defaultX = box.min.x + (box.max.x - box.min.x) * 0.33;
+        craneCalibration.defaultZ = box.min.z + (box.max.z - box.min.z) * 0.5;
+
+        // localStorage に校正値があれば優先、無ければデフォルト
+        const stored = loadStoredCalibration();
+        if (stored) {
+            craneCalibration.pivotX = stored.x;
+            craneCalibration.pivotZ = stored.z;
+            craneCalibration.isCustom = true;
+        } else {
+            craneCalibration.pivotX = craneCalibration.defaultX;
+            craneCalibration.pivotZ = craneCalibration.defaultZ;
+        }
+
+        gltf.scene.position.set(-craneCalibration.pivotX, 0, -craneCalibration.pivotZ);
         wrapper.add(gltf.scene);
 
         models.craneTemplate = wrapper;
         applyToonStyle(models.craneTemplate, { metallic: true });   // ⭐ クレーンだけ金属調トゥーン
-        console.log('✅ 吊车模板加载完成');
+        console.log(
+            `✅ 吊车模板加载完成 — pivot=(${craneCalibration.pivotX.toFixed(2)}, ${craneCalibration.pivotZ.toFixed(2)})`
+            + ` ${craneCalibration.isCustom ? '[カスタム / localStorage]' : '[デフォルト / BB 推定]'}`
+            + ` URL=${location.origin}`
+        );
         checkDone();
     });
 
