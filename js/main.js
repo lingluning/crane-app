@@ -1,5 +1,5 @@
 import {
-    scene, camera, raycaster, mouse,
+    scene, camera, raycaster, mouse, renderer, labelRenderer,
     loadModels, startAnimationLoop, getGroundIntersect
 } from './scene.js';
 
@@ -31,6 +31,11 @@ import { exportProjectJSON, importProjectJSON } from './export.js';
 import { updateSafetyDisplay } from './safety-display.js';
 import { getCrane, getMaxRadius, getAllCranes } from './crane-database.js';
 import { updateWeather, attachWeatherRefresh } from './weather.js';
+import { snapshot, initSnapshot, undo, redo, canUndo, canRedo } from './undo-stack.js';
+import { switchTab, saveCurrentTab, getActiveTabId, listSavedScenes, saveSceneAs, loadSceneByName, deleteSceneByName, renameScene } from './scenarios.js';
+import { updateBoomVisuals, clearBoomVisuals } from './boom-visual.js';
+import { updateSwingCheck, clearSwingVisuals } from './swing-check.js';
+import { updateGroundPressure } from './ground-pressure.js';
 
 
 
@@ -106,6 +111,7 @@ window.addEventListener('click', (event) => {
 
     const point = intersects[0].point;
 
+    const beforeCount = state.placedObjects.length;
     switch (state.currentTool) {
         case 'crane': placeCrane(point); break;
         case 'loadPick': placeLoadPick(point); break;
@@ -114,8 +120,8 @@ window.addEventListener('click', (event) => {
         case 'forbidden': addForbiddenPoint(point); break;
         case 'path': addPathPoint(point); break;
         case 'measure': addMeasurePoint(point); break;
-
     }
+    if (state.placedObjects.length > beforeCount) snapshot();
 });
 
 // ============= 移動平滑（拖拽 / 平移共用） =============
@@ -367,6 +373,7 @@ document.getElementById('context-menu').addEventListener('click', (event) => {
             setSelection([]);
             updateCounters();
             updateCraneButton();
+            snapshot();
             break;
         }
     }
@@ -436,14 +443,26 @@ window.addEventListener('mousemove', () => {
 
 // ============= 键盘 =============
 window.addEventListener('keydown', (event) => {
+    const tag = event.target && event.target.tagName;
+    const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
     // スペースキーで選択モードへ（入力中は除く）
-    if (event.key === ' ' || event.code === 'Space') {
-        const tag = event.target && event.target.tagName;
-        if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
-            event.preventDefault();
-            selectTool('select');
-            return;
-        }
+    if ((event.key === ' ' || event.code === 'Space') && !inInput) {
+        event.preventDefault();
+        selectTool('select');
+        return;
+    }
+
+    // Ctrl+Z / Ctrl+Y — undo/redo
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        if (!undo()) showToast('これ以上元に戻せません', 'info');
+        return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        if (!redo()) showToast('これ以上やり直せません', 'info');
+        return;
     }
 
     if (event.key === 'Escape') {
@@ -452,37 +471,42 @@ window.addEventListener('keydown', (event) => {
         } else if (!document.getElementById('context-menu').classList.contains('hidden')) {
             closeContextMenu();
         } else if (state.drawingPoints.length > 0) {
-            cancelDrawing();   // ⭐ 优先取消正在画的
+            cancelDrawing();
         } else if (state.currentTool === 'measure') {
-            cancelMeasure();   // ⭐ 新增
+            cancelMeasure();
             selectTool('select');
         } else {
             selectTool('select');
         }
+        return;
     }
 
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' && !inInput) {
         if (state.currentTool === 'forbidden' && state.drawingPoints.length >= 3) {
             finishForbiddenZone();
+            snapshot();
         }
         if (state.currentTool === 'path' && state.drawingPoints.length >= 2) {
-            finishPath();   // ⭐ 新增
+            finishPath();
+            snapshot();
         }
+        return;
     }
 
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !inInput) {
         if (state.selectedObjects.length > 0) {
             state.selectedObjects.slice().forEach(obj => removeObjectFully(obj));
             setSelection([]);
             updateCounters();
             updateCraneButton();
+            snapshot();
         }
+        return;
     }
 
-
-    if (event.key === 'r' || event.key === 'R') {
+    if ((event.key === 'r' || event.key === 'R') && !inInput) {
         if (state.selectedObjects.length > 0) {
-            rotateSelection(Math.PI / 18);   // 10°
+            rotateSelection(Math.PI / 18);
         }
     }
 });
@@ -496,16 +520,7 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
 
 // ============= 撤销按钮 =============
 document.getElementById('undo-btn').addEventListener('click', () => {
-    if (state.placedObjects.length === 0) return;
-
-    const last = state.placedObjects[state.placedObjects.length - 1];
-    if (state.selectedObjects.includes(last)) {
-        const remaining = state.selectedObjects.filter(o => o !== last);
-        setSelection(remaining, remaining[0] || null);
-    }
-    removeObjectFully(last);
-    updateCounters();
-    updateCraneButton();
+    if (!undo()) showToast('これ以上元に戻せません', 'info');
 });
 
 // ============= 滑杆 =============
@@ -639,8 +654,29 @@ document.getElementById('toggle-center-btn').addEventListener('click', () => {
         .classList.toggle('on', state.showCenterPoints);
 });
 
-// 定时更新安全 / 距离显示
+// ============= リサイズ対応 =============
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============= 场景加载后同步 UI =============
+window.addEventListener('crane-state-loaded', () => {
+    updateCraneModelOptions();
+    updateBoomLengthOptions();
+    updateOutriggerOptions();
+    syncRadiusSliderUpperBound();
+    const loadInput = document.getElementById('actual-load-input');
+    if (loadInput) loadInput.value = state.actualLoad;
+});
+
+// 定时更新安全 / 距离显示 + 新功能
 setInterval(updateSafetyDisplay, 200);
+setInterval(updateBoomVisuals, 200);
+setInterval(updateSwingCheck, 500);
+setInterval(updateGroundPressure, 500);
 
 // 实际吊重输入
 document.getElementById('actual-load-input').addEventListener('input', (e) => {
@@ -888,15 +924,104 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     });
 });
 
+// ============= シートタブ → シナリオ切替 =============
+document.getElementById('sheet-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.sheet-tab');
+    if (!tab) return;
+    const tabId = tab.dataset.tabId;
+    if (!tabId || tabId === getActiveTabId()) return;
+    switchTab(tabId);
+});
+
+// ============= シーンファイル管理モーダル =============
+function openSceneManager() {
+    renderSceneList();
+    document.getElementById('scene-manager-modal').classList.remove('hidden');
+}
+function closeSceneManager() {
+    document.getElementById('scene-manager-modal').classList.add('hidden');
+}
+
+function renderSceneList() {
+    const list = document.getElementById('scene-file-list');
+    const scenes = listSavedScenes();
+    if (scenes.length === 0) {
+        list.innerHTML = '<div style="color:var(--text-faint);font-size:12px;padding:12px 0">保存されたシーンがありません</div>';
+        return;
+    }
+    list.innerHTML = scenes.map(s => {
+        const date = new Date(s.savedAt).toLocaleString('ja-JP', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+        const count = (s.objects || []).length;
+        return `<div class="scene-file-row" data-name="${escapeAttr(s._name)}">
+            <div class="scene-file-info">
+                <div class="scene-file-name">${escapeHtml(s._name)}</div>
+                <div class="scene-file-meta">${date} · ${count} 要素</div>
+            </div>
+            <div class="scene-file-actions">
+                <button class="action-btn scene-load-btn" data-name="${escapeAttr(s._name)}">読込</button>
+                <button class="action-btn scene-delete-btn" style="color:var(--danger)" data-name="${escapeAttr(s._name)}">削除</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escapeAttr(s) {
+    return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.getElementById('scene-manager-btn').addEventListener('click', openSceneManager);
+document.getElementById('scene-manager-close').addEventListener('click', closeSceneManager);
+document.getElementById('scene-manager-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'scene-manager-modal') closeSceneManager();
+});
+
+document.getElementById('scene-save-as-btn').addEventListener('click', () => {
+    const input = document.getElementById('scene-save-name');
+    const name = input.value.trim();
+    if (!name) { showToast('シーン名を入力してください', 'warning'); return; }
+    if (saveSceneAs(name)) {
+        showToast(`「${name}」を保存しました`, 'success');
+        input.value = '';
+        renderSceneList();
+    }
+});
+
+document.getElementById('scene-file-list').addEventListener('click', (e) => {
+    const loadBtn = e.target.closest('.scene-load-btn');
+    const delBtn  = e.target.closest('.scene-delete-btn');
+    if (loadBtn) {
+        const name = loadBtn.dataset.name;
+        if (loadSceneByName(name)) {
+            showToast(`「${name}」を読み込みました`, 'success');
+            closeSceneManager();
+        }
+    }
+    if (delBtn) {
+        const name = delBtn.dataset.name;
+        if (confirm(`「${name}」を削除しますか？`)) {
+            deleteSceneByName(name);
+            renderSceneList();
+            showToast('削除しました', 'info');
+        }
+    }
+});
+
 // ============= 启动 =============
 attachWeatherRefresh();
 updateWeather();
-setInterval(updateWeather, 30 * 60 * 1000);   // 30 分ごとに自動更新
+setInterval(updateWeather, 30 * 60 * 1000);
 
 loadModels(() => {
+    initSnapshot();
     console.log('🎉 全部加载完成');
 });
 
 selectTool('crane');
 startAnimationLoop();
-startAutoSave(30000);  // 每 30 秒自动保存
+startAutoSave(30000);
+
+// 自动保存时同步当前标签页
+setInterval(saveCurrentTab, 30000);

@@ -451,36 +451,36 @@ export function cancelMeasure() {
 export function checkSafety() {
     const cranes = state.placedObjects.filter(o => o.userData.type === 'crane');
     const forbiddens = state.placedObjects.filter(o => o.userData.type === 'forbidden');
-    
-    // 检测 1: 作业半径 vs 禁止区
-    let radiusOK = true;
+
+    let anyDanger = false;
+
     cranes.forEach(crane => {
         if (!crane.userData.radiusCircle) return;
-        
         const radiusBox = new THREE.Box3().setFromObject(crane.userData.radiusCircle);
-        
+        let craneDanger = false;
+
         forbiddens.forEach(zone => {
             const zoneBox = new THREE.Box3().setFromObject(zone);
-            if (radiusBox.intersectsBox(zoneBox)) {
-                radiusOK = false;
-                // 半径圆变红
-                crane.userData.radiusCircle.material.color.setHex(0xff0000);
-                crane.userData.radiusCircle.material.opacity = 0.7;
-            } else {
-                // 恢复
-                if (radiusOK) {
-                    crane.userData.radiusCircle.material.color.setHex(0xff0000);
-                    crane.userData.radiusCircle.material.opacity = 0.5;
-                }
-            }
+            if (radiusBox.intersectsBox(zoneBox)) craneDanger = true;
         });
+
+        if (craneDanger) {
+            anyDanger = true;
+            crane.userData.radiusCircle.material.color.setHex(0xff4444);
+            crane.userData.radiusCircle.material.opacity = 0.65;
+        } else if (forbiddens.length > 0) {
+            // 有禁止区但没冲突 → 绿色
+            crane.userData.radiusCircle.material.color.setHex(0x00cc66);
+            crane.userData.radiusCircle.material.opacity = 0.35;
+        }
+        // 没有禁止区时不改变颜色（由 safety-display.js 按荷载状态控制）
     });
-    
-    // 更新 UI
+
     const radiusEl = document.getElementById('safety-radius');
-    if (radiusOK) {
-        radiusEl.innerHTML = '作業半径: <span class="text-green-400">✅ OK</span>';
+    if (!radiusEl) return;
+    if (anyDanger) {
+        radiusEl.innerHTML = '<span class="pill danger">⚠️ 禁止区と重複</span>';
     } else {
-        radiusEl.innerHTML = '作業半径: <span class="text-red-400">⚠️ 禁止区と重複</span>';
+        radiusEl.innerHTML = '<span class="pill ok">✅ OK</span>';
     }
 }

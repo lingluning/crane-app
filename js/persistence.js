@@ -11,8 +11,14 @@ import { finishForbiddenZone, finishPath, addMeasurePoint, hideHint } from './sa
 // ============= 序列化 =============
 export function serialize() {
     const data = {
-        version: '1.0',
+        version: '1.1',
         savedAt: new Date().toISOString(),
+        craneSettings: {
+            craneId: state.currentCraneId,
+            boomLength: state.currentBoomLength,
+            outriggerMode: state.currentOutriggerMode,
+            actualLoad: state.actualLoad
+        },
         objects: state.placedObjects.map(obj => ({
             type: obj.userData.type,
             position: {
@@ -24,7 +30,9 @@ export function serialize() {
             ...(obj.userData.groupId && { groupId: obj.userData.groupId }),
             ...(obj.userData.type === 'crane' && {
                 workRadius: obj.userData.workRadius || 10,
-                model: 'TADANO_GR-250N'
+                craneId: obj.userData.craneId || state.currentCraneId,
+                boomLength: obj.userData.boomLength || state.currentBoomLength,
+                outriggerMode: obj.userData.outriggerMode || state.currentOutriggerMode
             }),
             ...(obj.userData.type === 'plate' && {
                 size: obj.userData.size
@@ -43,23 +51,32 @@ export function serialize() {
 
 // ============= 反序列化 =============
 export function deserialize(data) {
-    // 清空：removeObjectFully で centerMarker / border / textLabel / arrows なども確実に回収
-    // （以前は radiusCircle と obj 自身しか外していなくて、中心マーカーが幽霊化していた）
     state.placedObjects.slice().forEach(obj => removeObjectFully(obj));
     state.placedObjects.length = 0;
     state.selectedObject = null;
     state.selectedObjects = [];
-    
-    // 重建
-    data.objects.forEach(item => {
+
+    // Restore global crane settings if saved
+    if (data.craneSettings) {
+        if (data.craneSettings.craneId)       state.currentCraneId       = data.craneSettings.craneId;
+        if (data.craneSettings.boomLength)    state.currentBoomLength    = data.craneSettings.boomLength;
+        if (data.craneSettings.outriggerMode) state.currentOutriggerMode = data.craneSettings.outriggerMode;
+        if (data.craneSettings.actualLoad != null) state.actualLoad      = data.craneSettings.actualLoad;
+    }
+
+    (data.objects || []).forEach(item => {
         const point = new THREE.Vector3(item.position.x, item.position.y, item.position.z);
 
         switch (item.type) {
             case 'crane':
+                // Apply per-crane settings before placeCrane reads state
+                if (item.craneId)       state.currentCraneId       = item.craneId;
+                if (item.boomLength)    state.currentBoomLength    = item.boomLength;
+                if (item.outriggerMode) state.currentOutriggerMode = item.outriggerMode;
                 placeCrane(point);
                 break;
             case 'loadPick':
-            case 'load':   // 旧存档兼容
+            case 'load':
                 placeLoadPick(point);
                 break;
             case 'loadDrop':
@@ -99,18 +116,22 @@ export function deserialize(data) {
         }
     });
 
-    hideHint();   // addMeasurePoint が出す測定ヒントを消す
+    hideHint();
     updateCounters();
     updateCraneButton();
+
+    // Notify main.js to sync UI selects (avoids circular dependency)
+    window.dispatchEvent(new CustomEvent('crane-state-loaded'));
 }
 
 // ============= 自动保存 =============
+let _autoSaveTimer = null;
 export function startAutoSave(intervalMs = 30000) {
-    setInterval(() => {
+    if (_autoSaveTimer) clearInterval(_autoSaveTimer);
+    _autoSaveTimer = setInterval(() => {
         if (state.placedObjects.length > 0) {
             const data = serialize();
             localStorage.setItem('crane_plan_auto', JSON.stringify(data));
-            console.log('🔄 自动保存:', new Date().toLocaleTimeString());
         }
     }, intervalMs);
 }

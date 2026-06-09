@@ -39,34 +39,43 @@ function disposeObject3D(obj) {
 }
 
 // ============= 完整移除一个 placedObject =============
-// 清理 scene 中所有附属对象 + CSS2DObject DOM 元素 + state.placedObjects 索引
+function removeCSSLabel(lbl, parent) {
+    if (!lbl) return;
+    if (parent && parent.children.includes(lbl)) parent.remove(lbl);
+    else scene.remove(lbl);
+    if (lbl.element && lbl.element.parentNode) lbl.element.parentNode.removeChild(lbl.element);
+}
+
 export function removeObjectFully(obj) {
     if (!obj) return;
 
-    if (obj.userData.border)       scene.remove(obj.userData.border);
+    if (obj.userData.border) {
+        scene.remove(obj.userData.border);
+        disposeObject3D(obj.userData.border);
+    }
     if (obj.userData.radiusCircle) {
         scene.remove(obj.userData.radiusCircle);
         disposeObject3D(obj.userData.radiusCircle);
-        obj.userData.radiusCircle = null;   // ⭐ smoothing 収束時の orphan 再生成防止
+        obj.userData.radiusCircle = null;
     }
     if (obj.userData.centerMarker) {
         scene.remove(obj.userData.centerMarker);
         disposeObject3D(obj.userData.centerMarker);
         obj.userData.centerMarker = null;
     }
-    if (obj.userData.arrows)       obj.userData.arrows.forEach(a => scene.remove(a));
-    if (obj.userData.balls)        obj.userData.balls.forEach(b => scene.remove(b));
-
-    // CSS2DObject 标签：从父节点 detach + 手动移除 DOM 元素
-    if (obj.userData.textLabel) {
-        const lbl = obj.userData.textLabel;
-        obj.remove(lbl);
-        if (lbl.element && lbl.element.parentNode) {
-            lbl.element.parentNode.removeChild(lbl.element);
-        }
+    if (obj.userData.arrows) {
+        obj.userData.arrows.forEach(a => { scene.remove(a); disposeObject3D(a); });
     }
+    if (obj.userData.balls) {
+        obj.userData.balls.forEach(b => { scene.remove(b); disposeObject3D(b); });
+    }
+    // loadPick/loadDrop: label is a child of obj
+    removeCSSLabel(obj.userData.textLabel, obj);
+    // measure: label stored as userData.label, added directly to scene
+    removeCSSLabel(obj.userData.label, null);
 
     scene.remove(obj);
+    disposeObject3D(obj);
     const idx = state.placedObjects.indexOf(obj);
     if (idx > -1) state.placedObjects.splice(idx, 1);
 }

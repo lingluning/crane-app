@@ -686,6 +686,7 @@
             <button class="action-btn" id="import-json-btn"><svg class="ic" width="13" height="13"><use href="#i-import"/></svg>取込</button>
             <div class="sep"></div>
             <button class="action-btn" id="screenshot-btn"><svg class="ic" width="13" height="13"><use href="#i-camera"/></svg>3視図</button>
+            <button class="action-btn" id="scene-manager-btn"><svg class="ic" width="13" height="13"><use href="#i-open"/></svg>場面管理</button>
             <button class="primary-btn" id="report-btn"><svg class="ic" width="13" height="13"><use href="#i-report"/></svg>計画書</button>
         </div>
     </div>
@@ -801,7 +802,23 @@
             <div class="panel-body">
                 <div class="panel-row"><span class="panel-label">作業半径</span><span id="safety-radius"><span class="pill ok">適正</span></span></div>
                 <div class="panel-row"><span class="panel-label">吊荷位置</span><span id="safety-load"><span class="pill ok">- なし</span></span></div>
+                <div class="panel-row"><span class="panel-label">旋回経路</span><span id="safety-swing"><span class="pill ok">- なし</span></span></div>
                 <div class="panel-row"><span class="panel-label">通路重複</span><span id="safety-path"><span class="pill ok">- なし</span></span></div>
+            </div>
+        </div>
+
+        <!-- Ground pressure -->
+        <div class="panel-card" id="ground-pressure-panel">
+            <div class="panel-head">
+                <svg class="ic" width="12" height="12"><use href="#i-weight"/></svg>
+                <span>接地圧</span>
+            </div>
+            <div class="panel-body">
+                <div class="panel-row">
+                    <span class="panel-label">アウトリガ圧</span>
+                    <span id="ground-pressure-status"><span class="pill ok">- なし</span></span>
+                </div>
+                <div class="big-stat" id="ground-pressure-value" style="font-size:18px">-<span class="big-stat-unit">kN/m²</span></div>
             </div>
         </div>
 
@@ -891,9 +908,9 @@
          Sheet tabs (bottom-left, above status bar) — 最大 3 タブ
          ============================================================ -->
     <div class="sheet-tabs" id="sheet-tabs">
-        <button class="sheet-tab active" data-tab-id="t1">作業 1</button>
-        <button class="sheet-tab" data-tab-id="t2">作業 2</button>
-        <button class="sheet-tab-add" id="sheet-tab-add" title="作業を追加">+</button>
+        <button class="sheet-tab active" data-tab-id="tabA">方案 A</button>
+        <button class="sheet-tab" data-tab-id="tabB">方案 B</button>
+        <button class="sheet-tab-add" id="sheet-tab-add" title="方案を追加" data-tab-id="tabC">+</button>
         <div class="sheet-tabs-counter" id="sheet-tabs-counter">2 / 3</div>
     </div>
 
@@ -1294,17 +1311,16 @@ Full license text: https://openfontlicense.org</pre>
             modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
         })();
 
-        // シートタブ：最大 3 タブまで、+ で追加
+        // シートタブ：最大 3 タブまで、+ で追加（方案C）
         (function () {
             const MAX_TABS = 3;
             const container = document.getElementById('sheet-tabs');
             const addBtn = document.getElementById('sheet-tab-add');
             const counter = document.getElementById('sheet-tabs-counter');
-            let nextSeq = 3;   // 既に作業1/作業2 が存在
 
             function tabs() { return container.querySelectorAll('.sheet-tab'); }
 
-            function setActive(tab) {
+            function setActiveEl(tab) {
                 tabs().forEach(t => t.classList.toggle('active', t === tab));
             }
 
@@ -1314,24 +1330,68 @@ Full license text: https://openfontlicense.org</pre>
                 counter.textContent = `${n} / ${MAX_TABS}`;
             }
 
-            tabs().forEach(t => t.addEventListener('click', () => setActive(t)));
+            // Existing tabs (A, B) get their active state managed by main.js via switchTab
+            tabs().forEach(t => t.addEventListener('click', () => setActiveEl(t)));
 
+            // + button adds 方案C (tabC)
             addBtn.addEventListener('click', () => {
                 if (tabs().length >= MAX_TABS) return;
                 const tab = document.createElement('button');
                 tab.className = 'sheet-tab';
-                tab.dataset.tabId = `t${nextSeq}`;
-                tab.textContent = `作業 ${nextSeq}`;
-                tab.addEventListener('click', () => setActive(tab));
+                tab.dataset.tabId = 'tabC';
+                tab.textContent = '方案 C';
+                tab.addEventListener('click', () => setActiveEl(tab));
                 addBtn.before(tab);
-                setActive(tab);
-                nextSeq++;
+                setActiveEl(tab);
+                addBtn.toggleAttribute('disabled', true);
                 refresh();
             });
 
             refresh();
         })();
+
+        // シーンマネージャーの閉じるボタン（フッターのキャンセル）
+        document.getElementById('scene-manager-cancel')
+            .addEventListener('click', () => document.getElementById('scene-manager-modal').classList.add('hidden'));
     </script>
+
+    <!-- ============================================================
+         Scene file manager modal
+         ============================================================ -->
+    <div id="scene-manager-modal" class="modal-backdrop hidden">
+        <div class="modal" style="width:560px;max-height:80vh">
+            <div class="modal-head">
+                <svg class="ic" width="14" height="14"><use href="#i-open"/></svg>
+                <div class="modal-head-title">場面ファイル管理</div>
+                <div style="flex:1"></div>
+                <button id="scene-manager-close" class="icon-btn"><svg class="ic" width="14" height="14"><use href="#i-close"/></svg></button>
+            </div>
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+                <input id="scene-save-name" type="text" placeholder="シーン名を入力して保存…"
+                    style="flex:1;height:28px;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:4px 10px;color:var(--text);font-size:12px;font-family:inherit">
+                <button id="scene-save-as-btn" class="primary-btn">
+                    <svg class="ic" width="12" height="12"><use href="#i-save"/></svg>保存
+                </button>
+            </div>
+            <div id="scene-file-list" style="padding:12px 20px;overflow-y:auto;max-height:380px;min-height:80px"></div>
+            <div class="modal-foot">
+                <div style="font-size:11px;color:var(--text-faint);flex:1">現在のシーンを名前を付けて保存し、後で読み込めます</div>
+                <button id="scene-manager-cancel" class="action-btn">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .scene-file-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 0; border-bottom: 1px solid var(--border);
+        }
+        .scene-file-row:last-child { border-bottom: none; }
+        .scene-file-info { flex: 1; min-width: 0; }
+        .scene-file-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .scene-file-meta { font-size: 10.5px; color: var(--text-faint); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+        .scene-file-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    </style>
 
     <script type="importmap">
     {
