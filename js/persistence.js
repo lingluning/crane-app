@@ -6,6 +6,7 @@ import {
     updateCraneRadius, updateCounters, updateCraneButton,
     removeObjectFully
 } from './tools.js';
+import { finishForbiddenZone, finishPath, addMeasurePoint, hideHint } from './safety-tools.js';
 
 // ============= 序列化 =============
 export function serialize() {
@@ -27,6 +28,13 @@ export function serialize() {
             }),
             ...(obj.userData.type === 'plate' && {
                 size: obj.userData.size
+            }),
+            ...((obj.userData.type === 'forbidden' || obj.userData.type === 'path') && {
+                points: obj.userData.points
+            }),
+            ...(obj.userData.type === 'measure' && {
+                from: obj.userData.from,
+                to: obj.userData.to
             })
         }))
     };
@@ -61,6 +69,24 @@ export function deserialize(data) {
                 if (item.size) state.currentPlateSize = item.size;
                 placePlate(point);
                 break;
+            case 'forbidden':
+                if (item.points && item.points.length >= 3) {
+                    state.drawingPoints = item.points.map(p => new THREE.Vector3(p.x, p.y, p.z));
+                    finishForbiddenZone();
+                }
+                break;
+            case 'path':
+                if (item.points && item.points.length >= 2) {
+                    state.drawingPoints = item.points.map(p => new THREE.Vector3(p.x, p.y, p.z));
+                    finishPath();
+                }
+                break;
+            case 'measure':
+                if (item.from && item.to) {
+                    addMeasurePoint(new THREE.Vector3(item.from.x, item.from.y, item.from.z));
+                    addMeasurePoint(new THREE.Vector3(item.to.x, item.to.y, item.to.z));
+                }
+                break;
         }
 
         const last = state.placedObjects[state.placedObjects.length - 1];
@@ -72,7 +98,8 @@ export function deserialize(data) {
             updateCraneRadius(last, item.workRadius);
         }
     });
-    
+
+    hideHint();   // addMeasurePoint が出す測定ヒントを消す
     updateCounters();
     updateCraneButton();
 }

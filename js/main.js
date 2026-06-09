@@ -24,8 +24,6 @@ import {
     cancelDrawing, showHint, hideHint
 } from './safety-tools.js';
 
-import { checkSafety } from './safety-tools.js';
-
 import { downloadThreeViews } from './export.js';
 
 import { exportProjectJSON, importProjectJSON } from './export.js';
@@ -902,5 +900,3 @@ loadModels(() => {
 selectTool('crane');
 startAnimationLoop();
 startAutoSave(30000);  // 每 30 秒自动保存
-
-setInterval(checkSafety, 500);
