@@ -66,6 +66,7 @@ export function deserialize(data) {
 
     (data.objects || []).forEach(item => {
         const point = new THREE.Vector3(item.position.x, item.position.y, item.position.z);
+        const countBefore = state.placedObjects.length;
 
         switch (item.type) {
             case 'crane':
@@ -106,8 +107,20 @@ export function deserialize(data) {
                 break;
         }
 
+        // この item が実際にオブジェクトを生成したときだけ属性を復元する。
+        // （点数不足で finishForbiddenZone / finishPath が中断した場合、
+        //   末尾は「1 つ前のオブジェクト」なので、そこへ書き込むと破壊してしまう）
+        if (state.placedObjects.length === countBefore) return;
         const last = state.placedObjects[state.placedObjects.length - 1];
-        if (!last) return;
+
+        // ⭐ Y をセーブ値へ戻す。
+        //   placeLoadPick/Drop は +0.5、placePlate は +0.05 の設置オフセットを
+        //   無条件に足すが、serialize が保存しているのは「オフセット加算後」の Y。
+        //   そのまま place に渡すと読み込みのたびに二重加算され、
+        //   ロード / Undo / Redo / シナリオ切替のたびにオブジェクトが浮き上がる。
+        if (Number.isFinite(item.position.y)) {
+            last.position.y = item.position.y;
+        }
 
         last.rotation.y = item.rotation || 0;
         if (item.groupId) last.userData.groupId = item.groupId;
