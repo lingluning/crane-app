@@ -117,32 +117,42 @@ export async function downloadThreeViews() {
     }
 }
 
-//收集数据
+//収集データ
+// ⚠ rf-* の入力欄は計画書が crane-plan-a3.html (iframe) に移った際に
+//   index.html から削除された。要素が無い環境でも落ちないよう、
+//   getElementById の結果を必ずガードしてから .value を読む。
+//   （以前は null.value で TypeError → JSON エクスポートが常に失敗していた）
+function rfValue(id, fallback = '') {
+    const el = document.getElementById(`rf-${id}`);
+    const v = el ? el.value : '';
+    return v || fallback;
+}
+
 function collectFormData() {
     return {
-        site: document.getElementById('rf-site').value || '〇〇現場',
-        company: document.getElementById('rf-company').value || '〇〇建設',
-        projectNo: document.getElementById('rf-projectNo').value || '',
-        date: document.getElementById('rf-date').value || new Date().toISOString().slice(0, 10),
-        weather: document.getElementById('rf-weather').value,
-        
-        craneModel: document.getElementById('rf-craneModel').value,
-        vehicleNo: document.getElementById('rf-vehicleNo').value,
-        maxLoad: document.getElementById('rf-maxLoad').value,
-        radius: document.getElementById('rf-radius').value,
-        
-        operator: document.getElementById('rf-operator').value,
-        rigger: document.getElementById('rf-rigger').value,
-        signaler: document.getElementById('rf-signaler').value,
-        guide: document.getElementById('rf-guide').value,
-        
-        morning: document.getElementById('rf-morning').value,
-        afternoon: document.getElementById('rf-afternoon').value,
-        mainLoad: document.getElementById('rf-mainLoad').value,
-        
-        windLimit: document.getElementById('rf-windLimit').value || 10,
-        rainLimit: document.getElementById('rf-rainLimit').value || 10,
-        notes: document.getElementById('rf-notes').value
+        site: rfValue('site', '〇〇現場'),
+        company: rfValue('company', '〇〇建設'),
+        projectNo: rfValue('projectNo'),
+        date: rfValue('date', new Date().toISOString().slice(0, 10)),
+        weather: rfValue('weather'),
+
+        craneModel: rfValue('craneModel'),
+        vehicleNo: rfValue('vehicleNo'),
+        maxLoad: rfValue('maxLoad'),
+        radius: rfValue('radius'),
+
+        operator: rfValue('operator'),
+        rigger: rfValue('rigger'),
+        signaler: rfValue('signaler'),
+        guide: rfValue('guide'),
+
+        morning: rfValue('morning'),
+        afternoon: rfValue('afternoon'),
+        mainLoad: rfValue('mainLoad'),
+
+        windLimit: rfValue('windLimit', 10),
+        rainLimit: rfValue('rainLimit', 10),
+        notes: rfValue('notes')
     };
 }
 
