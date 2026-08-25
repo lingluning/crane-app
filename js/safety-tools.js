@@ -1,14 +1,29 @@
 import * as THREE from 'three';
 import { scene, models } from './scene.js';
-import { state } from './state.js';
-import { updateCounters, showToast, getCraneCenter } from './tools.js';
+import { state, bumpRevision } from './state.js';
+import { updateCounters, showToast, getCraneCenter, disposeObject3D } from './tools.js';
 import { CSS2DObject } from './scene.js';
 import { circleIntersectsPolygonXZ } from './geometry-2d.js';
 
 
 // ============= 地形 Y サンプラ：(x, z) → 地形高さ =============
-// 一度サイトメッシュを集めて、繰り返し下向きレイキャストで Y を取る。
-// 戻り値の関数を作成側スコープで再利用することで毎回の traverse を省く。
+// 下向きレイキャストで地形高さを取る。
+//
+// site.glb は 28MB あり BVH も無いので、1 本のレイでもメッシュ全三角形を
+// 舐める。実測でおよそ 2.5ms/本。描画プレビューは点を打つたびに折れ線を
+// 0.5m 刻みで作り直し、そのたびに「前回と同じ座標」を撃ち直していたため、
+// 描けば描くほどクリックが重くなっていた。
+//
+// 座標を量子化したモジュール共有キャッシュを噛ませて、同じ場所への
+// 撃ち直しを消す。地形は動かないのでキャッシュは安全。
+const TERRAIN_CACHE_QUANT = 0.25;        // m。この粒度で丸めてキャッシュ
+const TERRAIN_CACHE_MAX = 200000;        // 上限。超えたら捨てて作り直す
+const _terrainCache = new Map();
+
+export function clearTerrainCache() {
+    _terrainCache.clear();
+}
+
 function makeTerrainSampler() {
     const siteMeshes = [];
     if (models.siteModel) {
@@ -17,13 +32,36 @@ function makeTerrainSampler() {
     const ray = new THREE.Raycaster();
     const down = new THREE.Vector3(0, -1, 0);
     const origin = new THREE.Vector3();
+
     return function sample(x, z, fallback = 0) {
         if (siteMeshes.length === 0) return fallback;
+
+        const qx = Math.round(x / TERRAIN_CACHE_QUANT);
+        const qz = Math.round(z / TERRAIN_CACHE_QUANT);
+        const key = qx * 100000 + qz;
+        const cached = _terrainCache.get(key);
+        if (cached !== undefined) return cached === null ? fallback : cached;
+
         origin.set(x, 500, z);
         ray.set(origin, down);
         const hits = ray.intersectObjects(siteMeshes, false);
-        return hits.length > 0 ? hits[0].point.y : fallback;
+        const y = hits.length > 0 ? hits[0].point.y : null;
+
+        if (_terrainCache.size >= TERRAIN_CACHE_MAX) _terrainCache.clear();
+        _terrainCache.set(key, y);
+        return y === null ? fallback : y;
     };
+}
+
+
+// ============= 描画プレビューの破棄 =============
+// プレビューは点を打つたびに丸ごと作り直しているため、scene.remove() だけだと
+// クリック 1 回ごとに geometry / material が GPU に residual として溜まる。
+export function clearDrawingPreview() {
+    if (!state.drawingPreview) return;
+    scene.remove(state.drawingPreview);
+    disposeObject3D(state.drawingPreview);
+    state.drawingPreview = null;
 }
 
 
@@ -91,10 +129,7 @@ export function addForbiddenPoint(point) {
     state.drawingPoints.push(point.clone());
     
     // 删掉旧的预览
-    if (state.drawingPreview) {
-        scene.remove(state.drawingPreview);
-        state.drawingPreview = null;
-    }
+    clearDrawingPreview();
 
     // 画端点 + 虚线（红色）
     state.drawingPreview = createDrawingPreview(state.drawingPoints, 0xff0000, 0.6, 0.3);
@@ -124,15 +159,29 @@ export function finishForbiddenZone() {
         ? Array.from(shapeGeom.index.array)
         : positions.map((_, i) => i).filter((_, i) => i % 3 === 0);
 
-    // 最大エッジ長 > 0.5m の三角形を 4 分割（中点分割）して内側にもサンプル点を増やす。
+    // 最大エッジ長がしきい値を超える三角形を 4 分割（中点分割）し、
+    // 内側にも地形サンプル点を増やす。
+    //
+    // ⚠ 以前は「MAX_EDGE 0.5m 固定 / 最大 8 回」だけが条件だった。
+    //   1 回で三角形が 4 倍になるので最悪 4^8 = 65536 倍まで膨らみ、しかも
+    //   この後で頂点 1 つにつき 1 本ずつ 28MB のサイト地形へレイを撃つ。
+    //   100m 角の禁止区を引くとブラウザが数万回の raycast で固まっていた。
+    //   反復回数ではなく「頂点数の上限」で打ち切り、コストを実際に縛る。
     const MAX_EDGE = 0.5;
+    const MAX_VERTICES = 3000;      // ≒ この数だけ地形 raycast が走る上限
     const MAX_ITERATIONS = 8;
+
     function edgeLen2D(i, j) {
         const dx = positions[i * 3]     - positions[j * 3];
         const dz = positions[i * 3 + 1] - positions[j * 3 + 1];
         return Math.hypot(dx, dz);
     }
+
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+        // 次の 1 回で頂点数が上限を超えそうならそこで止める。
+        // 中点分割は 1 回で概ね頂点数が 4 倍になるため、それを見込んで判定。
+        if (positions.length / 3 * 4 > MAX_VERTICES) break;
+
         let changed = false;
         const midCache = new Map();
         const newIdx = [];
@@ -191,9 +240,16 @@ export function finishForbiddenZone() {
     scene.add(zone);
     state.placedObjects.push(zone);
 
-    // 境界線：エッジを 0.5m 刻みでサンプリングして地形追随
+    // 境界線：エッジをサンプリングして地形追随。
+    // 刻みは周長に応じて粗くする（固定 0.5m だと 400m 周長で 800 点になり、
+    // 半透明の輪郭線としては明らかに過剰）。
     const borderPts = [];
-    const STEP = 0.5;
+    let perimeter = 0;
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i], b = points[(i + 1) % points.length];
+        perimeter += Math.hypot(b.x - a.x, b.z - a.z);
+    }
+    const STEP = Math.max(0.5, perimeter / 400);
     for (let i = 0; i < points.length; i++) {
         const a = points[i], b = points[(i + 1) % points.length];
         const len = Math.hypot(b.x - a.x, b.z - a.z);
@@ -213,25 +269,18 @@ export function finishForbiddenZone() {
 
     cleanupDrawing();
     updateCounters();
+    bumpRevision();
 }
 
+// 描画中の状態をすべて破棄（中断・確定の両方から使う）。
+// 以前は cancelDrawing / cleanupDrawing という完全に同一の関数が 2 本あった。
 export function cancelDrawing() {
     state.drawingPoints = [];
-    if (state.drawingPreview) {
-        scene.remove(state.drawingPreview);
-        state.drawingPreview = null;
-    }
+    clearDrawingPreview();
     hideHint();
 }
 
-function cleanupDrawing() {
-    state.drawingPoints = [];
-    if (state.drawingPreview) {
-        scene.remove(state.drawingPreview);
-        state.drawingPreview = null;
-    }
-    hideHint();
-}
+const cleanupDrawing = cancelDrawing;
 
 
 // ============= 通路 =============
@@ -239,10 +288,7 @@ export function addPathPoint(point) {
     state.drawingPoints.push(point.clone());
     
     // 删掉旧的预览
-    if (state.drawingPreview) {
-        scene.remove(state.drawingPreview);
-        state.drawingPreview = null;
-    }
+    clearDrawingPreview();
 
     // 画端点 + 虚线（绿色）
     state.drawingPreview = createDrawingPreview(state.drawingPoints, 0x00ff00, 0.7, 0.35);
@@ -346,6 +392,7 @@ export function finishPath() {
 
     cleanupDrawing();
     updateCounters();
+    bumpRevision();
 
     console.log(`通路長: ${totalLength.toFixed(1)} m`);
 }
@@ -438,6 +485,7 @@ export function addMeasurePoint(point) {
         measureFirstPoint = null;
         showHint('📏 2 点をクリックして距離を測定');
         updateCounters();
+        bumpRevision();
         
         console.log(`距離: ${distance.toFixed(2)} m`);
     }

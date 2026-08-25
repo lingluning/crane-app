@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { scene } from './scene.js';
-import { state } from './state.js';
+import { state, bumpRevision } from './state.js';
 import {
     placeCrane, placeLoadPick, placeLoadDrop, placePlate,
     updateCraneRadius, updateCounters, updateCraneButton,
@@ -132,6 +132,7 @@ export function deserialize(data) {
     hideHint();
     updateCounters();
     updateCraneButton();
+    bumpRevision();
 
     // Notify main.js to sync UI selects (avoids circular dependency)
     window.dispatchEvent(new CustomEvent('crane-state-loaded'));

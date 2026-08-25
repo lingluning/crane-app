@@ -15,13 +15,13 @@ import {
 
 import { serialize, deserialize, startAutoSave } from './persistence.js';
 
-import { state } from './state.js';
+import { state, bumpRevision } from './state.js';
 
 import {
     addForbiddenPoint, finishForbiddenZone,
-    addPathPoint, finishPath,  
-    addMeasurePoint, cancelMeasure,    
-    cancelDrawing, showHint, hideHint
+    addPathPoint, finishPath,
+    addMeasurePoint, cancelMeasure,
+    cancelDrawing, showHint, hideHint, checkSafety
 } from './safety-tools.js';
 
 import { downloadThreeViews } from './export.js';
@@ -672,15 +672,53 @@ window.addEventListener('crane-state-loaded', () => {
     if (loadInput) loadInput.value = state.actualLoad;
 });
 
-// 定时更新安全 / 距离显示 + 新功能
-setInterval(updateSafetyDisplay, 200);
-setInterval(updateBoomVisuals, 200);
-setInterval(updateSwingCheck, 500);
-setInterval(updateGroundPressure, 500);
+// ============= 安全計算パイプライン =============
+// 以前は 4 本の setInterval に加えて描画ループ内でも checkSafety を回し、
+// 何も変わっていなくても毎秒 5 回、RingGeometry・CSS2D ラベル・旋回弧を
+// 全部作り直しては捨てていた（GC 圧のもと）。
+//
+// state.revision が変わったときだけ動かす。checkSafety が
+// crane.userData.zoneConflict を書き、updateSafetyDisplay がそれを読んで
+// 着色するという依存があるので、順序を固定して 1 本にまとめる。
+//
+// 保険として、revision が変わらなくても FORCE_INTERVAL_MS ごとに 1 回は
+// 数値パネルを通す。bump の付け忘れがあっても表示が永久に古いままには
+// ならない。ただし保険で回すのは「計算とテキスト更新だけ」の軽い側に限る。
+// ブーム表示と旋回チェックは geometry と CSS2D ラベルを毎回捨てて作り直す
+// ので、変更が無い間は一切触らない。
+const PIPELINE_INTERVAL_MS = 200;
+const FORCE_INTERVAL_MS = 2000;
+
+let _lastPipelineRevision = -1;
+let _lastForcedRun = 0;
+
+function runSafetyPipeline() {
+    const now = Date.now();
+    const dirty = state.revision !== _lastPipelineRevision;
+    const forced = now - _lastForcedRun >= FORCE_INTERVAL_MS;
+    if (!dirty && !forced) return;
+
+    _lastForcedRun = now;
+
+    // 軽い側：純粋な計算 + テキスト/色の更新。保険実行でもここは通す。
+    checkSafety();            // → crane.userData.zoneConflict
+    updateSafetyDisplay();    // ← zoneConflict を読んで半径円を着色
+    updateGroundPressure();
+
+    // 重い側：geometry と DOM ラベルの作り直しを伴う。変更時のみ。
+    if (dirty) {
+        _lastPipelineRevision = state.revision;
+        updateBoomVisuals();
+        updateSwingCheck();
+    }
+}
+
+setInterval(runSafetyPipeline, PIPELINE_INTERVAL_MS);
 
 // 实际吊重输入
 document.getElementById('actual-load-input').addEventListener('input', (e) => {
     state.actualLoad = parseFloat(e.target.value) || 0;
+    bumpRevision();
 });
 
 // ============= Week 11: ブーム + アウトリガー 下拉 =============
@@ -767,7 +805,10 @@ function syncRadiusSliderUpperBound() {
 
 document.getElementById('boom-length-select').addEventListener('change', (e) => {
     state.currentBoomLength = parseFloat(e.target.value);
+    const crane = state.placedObjects.find(o => o.userData.type === 'crane');
+    if (crane) crane.userData.boomLength = state.currentBoomLength;
     syncRadiusSliderUpperBound();
+    bumpRevision();
 });
 
 document.getElementById('outrigger-select').addEventListener('change', (e) => {
@@ -776,6 +817,7 @@ document.getElementById('outrigger-select').addEventListener('change', (e) => {
     const crane = state.placedObjects.find(o => o.userData.type === 'crane');
     if (crane) crane.userData.outriggerMode = e.target.value;
     syncRadiusSliderUpperBound();
+    bumpRevision();
 });
 
 // ============= 機種（クレーン型式）プルダウン =============
@@ -824,6 +866,7 @@ document.getElementById('crane-model-select').addEventListener('change', (e) => 
     if (placed) placed.userData.outriggerMode = state.currentOutriggerMode;
 
     syncRadiusSliderUpperBound();
+    bumpRevision();
     showToast(`機種を切替: ${newCrane.displayName}`, 'success');
 });
 

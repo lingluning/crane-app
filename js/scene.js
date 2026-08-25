@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { checkSafety } from './safety-tools.js';
 import { state } from './state.js';
 
 
@@ -21,6 +20,8 @@ camera.position.set(5, 8, 15);
 
 export const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+// HiDPI 対応。上限 2 にしておかないと 3x 端末で塗りつぶし量が 9 倍になる。
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -186,6 +187,38 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 1.4);
 directionalLight.position.set(5, 20, 5);
 directionalLight.castShadow = true;
 scene.add(directionalLight);
+scene.add(directionalLight.target);
+
+// 影のフラスタムはサイト読込後に実寸へ合わせる（fitShadowToSite）。
+// 既定の DirectionalLight は ±5 単位しかカバーしないため、数十 m ある
+// 現場では影が途中で切れる／全く出ない。
+directionalLight.shadow.mapSize.set(2048, 2048);
+directionalLight.shadow.bias = -0.0005;
+
+function fitShadowToSite(siteRoot) {
+    const box = new THREE.Box3().setFromObject(siteRoot);
+    if (box.isEmpty()) return;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.z) * 0.5 * 1.15;   // 少し余裕
+    const height = Math.max(size.y, 1);
+
+    // 光源を現場中心の斜め上に置き、target を中心に向ける
+    const dir = new THREE.Vector3(1, 4, 1).normalize();
+    const dist = radius + height * 2;
+    directionalLight.position.copy(center).addScaledVector(dir, dist);
+    directionalLight.target.position.copy(center);
+    directionalLight.target.updateMatrixWorld();
+
+    const cam = directionalLight.shadow.camera;
+    cam.left = -radius; cam.right = radius;
+    cam.top  =  radius; cam.bottom = -radius;
+    cam.near = 0.5;
+    cam.far  = dist + radius + height * 2;
+    cam.updateProjectionMatrix();
+    directionalLight.shadow.needsUpdate = true;
+}
 
 
 // ============= 卡通材质工具（SketchUp 风格 toon + 描边） =============
@@ -384,6 +417,7 @@ export function loadModels(onAllLoaded) {
         applyToonStyle(gltf.scene);
         models.siteModel = gltf.scene;
         scene.add(gltf.scene);
+        fitShadowToSite(gltf.scene);
         console.log('✅ 场地加载完成');
         checkDone();
     });
@@ -391,20 +425,13 @@ export function loadModels(onAllLoaded) {
 
 // ============= 动画循环 =============
 export function startAnimationLoop() {
-    let lastSafetyCheck = 0;
-    
+    // 安全検定は main.js の runSafetyPipeline（変更時のみ実行）へ移した。
+    // 描画ループは描画だけを担う。
     function animate() {
         requestAnimationFrame(animate);
         controls.update();
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
-        
-        // 安全检测每 500ms 一次（不用每帧都查）
-        const now = Date.now();
-        if (now - lastSafetyCheck > 500) {
-            checkSafety();
-            lastSafetyCheck = now;
-        }
     }
     animate();
 }
