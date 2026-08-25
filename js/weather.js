@@ -82,8 +82,13 @@ function renderLoading() {
 }
 
 function renderError(msg) {
-    document.getElementById('weather-content').innerHTML =
-        `<div class="text-xs text-red-400">取得失敗: ${msg}</div>`;
+    const el = document.getElementById('weather-content');
+    if (!el) return;
+    el.textContent = '';
+    const div = document.createElement('div');
+    div.className = 'text-xs text-red-400';
+    div.textContent = `取得失敗: ${msg}`;   // msg は外部由来なので textContent で
+    el.appendChild(div);
 }
 
 function renderForecast(loc, data) {
@@ -118,7 +123,13 @@ function renderForecast(loc, data) {
     document.getElementById('weather-content').innerHTML = html;
 }
 
+// 進行中のリクエストは地点ごとに持つ。
+// 以前は 1 本だけ共有していたため、設定で地点を変えて即更新すると
+// 「古い地点のデータ」を「新しい地点のラベル」で描いてしまっていた。
 let _inflight = null;
+let _inflightKey = null;
+// 最後に投げた更新だけが描画する（遅れて返った古い応答を捨てる）
+let _latestRequestId = 0;
 
 export async function updateWeather() {
     const loc = loadLocation();
@@ -128,16 +139,24 @@ export async function updateWeather() {
         return;
     }
 
+    const key = `${loc.lat},${loc.lng}`;
+    const requestId = ++_latestRequestId;
+
     renderLoading();
 
     try {
-        // 短時間の連打を抑止（同じ in-flight があれば共有）
-        if (!_inflight) {
-            _inflight = fetchForecast(loc.lat, loc.lng).finally(() => { _inflight = null; });
+        // 同じ地点への連打だけを共有する
+        if (!_inflight || _inflightKey !== key) {
+            _inflightKey = key;
+            _inflight = fetchForecast(loc.lat, loc.lng).finally(() => {
+                if (_inflightKey === key) { _inflight = null; _inflightKey = null; }
+            });
         }
         const data = await _inflight;
+        if (requestId !== _latestRequestId) return;   // より新しい更新に追い越された
         renderForecast(loc, data);
     } catch (e) {
+        if (requestId !== _latestRequestId) return;
         renderError(e.message);
         console.error('[weather]', e);
     }

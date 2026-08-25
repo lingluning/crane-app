@@ -361,16 +361,41 @@ export const models = {
     siteModel: null
 };
 
-let loadedCount = 0;
 const totalLoads = 2;
 
 export function loadModels(onAllLoaded) {
+    // loadedCount はモジュール変数だったため loadModels を 2 度呼ぶと
+    // 数え上げが壊れる。呼び出しごとのローカルにする。
+    let settled = 0;
+    const failures = [];
+
     function checkDone() {
-        loadedCount++;
-        if (loadedCount >= totalLoads) {
-            document.getElementById('loading').style.display = 'none';
-            if (onAllLoaded) onAllLoaded();
+        settled++;
+        if (settled < totalLoads) return;
+
+        const loadingEl = document.getElementById('loading');
+        if (failures.length > 0) {
+            // ⚠ 以前は onError を渡しておらず、404 やネットワーク断のときに
+            //   checkDone が呼ばれないまま「読込中…」が永久に残っていた。
+            //   何が落ちたのか画面に出す。
+            if (loadingEl) {
+                loadingEl.textContent =
+                    `モデルの読込に失敗しました: ${failures.join(' / ')}`;
+                loadingEl.style.display = '';
+            }
+            console.error('[loadModels] 失敗:', failures);
+            return;
         }
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (onAllLoaded) onAllLoaded();
+    }
+
+    function onLoadError(name) {
+        return (err) => {
+            failures.push(name);
+            console.error(`[loadModels] ${name} の読込に失敗`, err);
+            checkDone();
+        };
     }
     
     gltfLoader.load('./models/crane_25T.glb', (gltf) => {
@@ -407,7 +432,7 @@ export function loadModels(onAllLoaded) {
             + ` URL=${location.origin}`
         );
         checkDone();
-    });
+    }, undefined, onLoadError('crane_25T.glb'));
 
     gltfLoader.load('./models/site.glb', (gltf) => {
         gltf.scene.position.set(0, 0, 0);
@@ -420,7 +445,7 @@ export function loadModels(onAllLoaded) {
         fitShadowToSite(gltf.scene);
         console.log('✅ 场地加载完成');
         checkDone();
-    });
+    }, undefined, onLoadError('site.glb'));
 }
 
 // ============= 动画循环 =============
