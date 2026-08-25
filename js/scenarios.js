@@ -1,4 +1,4 @@
-import { serialize, deserialize } from './persistence.js';
+import { serialize, deserialize, safeSetItem } from './persistence.js';
 import { clear } from './undo-stack.js';
 
 const TAB_STORE_KEY = 'crane_scenarios';
@@ -16,7 +16,7 @@ function loadTabStore() {
 }
 
 function saveTabStore(store) {
-    localStorage.setItem(TAB_STORE_KEY, JSON.stringify(store));
+    return safeSetItem(TAB_STORE_KEY, JSON.stringify(store));
 }
 
 function loadSavedStore() {
@@ -28,7 +28,7 @@ function loadSavedStore() {
 }
 
 function saveSavedStore(store) {
-    localStorage.setItem(SAVED_STORE_KEY, JSON.stringify(store));
+    return safeSetItem(SAVED_STORE_KEY, JSON.stringify(store));
 }
 
 export function getActiveTabId() {
@@ -68,8 +68,9 @@ export function saveSceneAs(name) {
         const store = loadSavedStore();
         const data = serialize();
         store[name] = { ...data, _name: name };
-        saveSavedStore(store);
-        return true;
+        // 容量超過で書けなかったときに true を返さない（保存できたと
+        // 表示しておいて実際には消えている、を防ぐ）
+        return saveSavedStore(store);
     } catch {
         return false;
     }

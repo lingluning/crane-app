@@ -6,7 +6,10 @@ import {
     updateCraneRadius, updateCounters, updateCraneButton,
     removeObjectFully
 } from './tools.js';
-import { finishForbiddenZone, finishPath, addMeasurePoint, hideHint } from './safety-tools.js';
+import {
+    finishForbiddenZone, finishPath, addMeasurePoint, hideHint,
+    cancelDrawing, cancelMeasure
+} from './safety-tools.js';
 
 // ============= 序列化 =============
 export function serialize() {
@@ -51,6 +54,13 @@ export function serialize() {
 
 // ============= 反序列化 =============
 export function deserialize(data) {
+    // 作図中・測距中の途中状態を先に捨てる。
+    // これをしないと、点を打っている最中に読込 / Undo すると、
+    // 残った drawingPreview がシーンに孤児として残り、測距の
+    // 1 点目が持ち越されて以降のペアが 1 つずつずれる。
+    cancelDrawing();
+    cancelMeasure();
+
     state.placedObjects.slice().forEach(obj => removeObjectFully(obj));
     state.placedObjects.length = 0;
     state.selectedObject = null;
@@ -139,13 +149,24 @@ export function deserialize(data) {
 }
 
 // ============= 自动保存 =============
+// localStorage は容量超過（QuotaExceededError）やプライベートモードで
+// 投げる。素通しだと 30 秒ごとに例外を吐き続けるので握って警告に留める。
+export function safeSetItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        return true;
+    } catch (e) {
+        console.warn(`[storage] ${key} の保存に失敗:`, e && e.name);
+        return false;
+    }
+}
+
 let _autoSaveTimer = null;
 export function startAutoSave(intervalMs = 30000) {
     if (_autoSaveTimer) clearInterval(_autoSaveTimer);
     _autoSaveTimer = setInterval(() => {
         if (state.placedObjects.length > 0) {
-            const data = serialize();
-            localStorage.setItem('crane_plan_auto', JSON.stringify(data));
+            safeSetItem('crane_plan_auto', JSON.stringify(serialize()));
         }
     }, intervalMs);
 }
