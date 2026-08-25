@@ -465,9 +465,13 @@ export function exportProjectJSON() {
     });
     const link = document.createElement('a');
     const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const url = URL.createObjectURL(blob);
     link.download = `crane-project-${timestamp}.json`;
-    link.href = URL.createObjectURL(blob);
+    link.href = url;
     link.click();
+    // Blob URL はドキュメントが閉じるまで生き続けるため明示的に解放する。
+    // click() の処理が終わる猶予を与えてから revoke。
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 // JSON 导入
