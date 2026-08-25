@@ -14,7 +14,14 @@ export function showToast(message, type = 'info', duration = 2500) {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `<span>${TOAST_ICONS[type] || ''}</span><span>${message}</span>`;
+    // メッセージにはシーン名など利用者の入力がそのまま渡る。
+    // innerHTML で組むと `<img src=x onerror=...>` のような名前で
+    // スクリプトが走るため、テキストは textContent で入れる。
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = TOAST_ICONS[type] || '';
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    toast.append(iconSpan, msgSpan);
     container.appendChild(toast);
 
     setTimeout(() => {
@@ -190,7 +197,10 @@ export function updateGhost() {
                 color: 0xffd700, transparent: true, opacity: 0.5 
             });
             break;
-        case 'select':
+        // 選択・作図系ツールはゴーストを持たない。
+        // 以前は default に落ちて new THREE.Mesh(undefined, undefined) が
+        // 作られ、ツールを切り替えるたびに空のメッシュがシーンに溜まっていた。
+        default:
             return;
     }
 
@@ -270,7 +280,6 @@ export function placeCrane(point) {
     crane.userData.radiusCircle = radiusCircle;
     
     updateCounters();
-    document.getElementById('crane-info').classList.remove('hidden');
     updateCraneButton();
     bumpRevision();
 
@@ -511,7 +520,11 @@ function updateCraneControlPanel() {
         const r = obj.userData.workRadius || 10;
         document.getElementById('radius-slider').value = r;
         document.getElementById('radius-value').textContent = r.toFixed(1);
-        const rot = (obj.rotation.y * 180 / Math.PI) % 360;
+        // スライダーは min=0 / max=360。剰余だけだと反時計回りで負になり、
+        // スライダー側は 0 にクランプされる一方で数値表示は -45 のままになり、
+        // 表示と実物がずれた上、次に触った瞬間クレーンが飛んでいた。
+        // [0, 360) に正規化する。
+        const rot = ((obj.rotation.y * 180 / Math.PI) % 360 + 360) % 360;
         document.getElementById('rotation-slider').value = rot;
         document.getElementById('rotation-value').textContent = rot.toFixed(0);
     } else {

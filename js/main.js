@@ -13,7 +13,7 @@ import {
     ungroupSelection, setSelection, findRootObject
 } from './tools.js';
 
-import { serialize, deserialize, startAutoSave } from './persistence.js';
+import { serialize, deserialize, startAutoSave, safeSetItem } from './persistence.js';
 
 import { state, bumpRevision } from './state.js';
 
@@ -138,6 +138,20 @@ const moveSmoothing = {
     lastTime: 0
 };
 
+// ドラッグ / 平移の確定は「マウスを離した瞬間」ではなく
+// 「平滑追従が収束した後」に undo スナップショットを取る。
+// mouseup 時点ではまだ目標へ寄っている途中なので、そこで撮ると
+// 中途半端な座標が履歴に残る。
+let _pendingMoveSnapshot = false;
+
+function requestMoveSnapshot() {
+    if (moveSmoothing.targets.size === 0) {
+        snapshot();          // 既に収束済み
+        return;
+    }
+    _pendingMoveSnapshot = true;
+}
+
 function setMoveTarget(obj, x, z) {
     moveSmoothing.targets.set(obj, { x, z });
     if (!moveSmoothing.running) {
@@ -155,6 +169,10 @@ function smoothMoveTick(now) {
     if (moveSmoothing.targets.size === 0) {
         moveSmoothing.running = false;
         moveSmoothing.lastTime = 0;
+        if (_pendingMoveSnapshot) {
+            _pendingMoveSnapshot = false;
+            snapshot();
+        }
         return;
     }
 
@@ -272,6 +290,7 @@ window.addEventListener('mouseup', (event) => {
     if (dragState.dragging) {
         suppressNextClick = true;
         document.body.style.cursor = '';
+        requestMoveSnapshot();   // 移動も undo 対象にする（収束後に記録）
     }
     dragState.armed = false;
     dragState.dragging = false;
@@ -353,8 +372,8 @@ document.getElementById('context-menu').addEventListener('click', (event) => {
     if (!btn || btn.hasAttribute('disabled')) return;
 
     switch (btn.dataset.action) {
-        case 'rotate-cw':  rotateSelection( ROTATE_STEP_RAD); break;
-        case 'rotate-ccw': rotateSelection(-ROTATE_STEP_RAD); break;
+        case 'rotate-cw':  rotateSelection( ROTATE_STEP_RAD); snapshot(); break;
+        case 'rotate-ccw': rotateSelection(-ROTATE_STEP_RAD); snapshot(); break;
         case 'translate':  startTranslate(); break;
         case 'group': {
             const formed = formGroupFromSelection();
@@ -420,13 +439,16 @@ function applyTranslate() {
 }
 
 function commitTranslate() {
+    const moved = translateState.originals.length > 0;
     translateState.active = false;
     translateState.originals = [];
     document.body.style.cursor = '';
+    if (moved) requestMoveSnapshot();   // 平移も undo 対象にする（収束後に記録）
 }
 
 function cancelTranslate() {
     if (!translateState.active) return;
+    _pendingMoveSnapshot = false;   // 取消なので履歴には残さない
     clearMoveTargets();   // ⭐ 残った平滑ターゲットが原位復元を邪魔しないように
     translateState.originals.forEach(({obj, x, z}) => {
         translatePlaced(obj, x - obj.position.x, z - obj.position.z);   // 非 light → クレーンは Y も再フィット
@@ -453,13 +475,17 @@ window.addEventListener('keydown', (event) => {
         return;
     }
 
-    // Ctrl+Z / Ctrl+Y — undo/redo
-    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z — undo/redo
+    // ⚠ Shift を押していると event.key は 'Z'（大文字）になる。
+    //   以前は 'z' と厳密比較していたため Ctrl+Shift+Z が一度も発火せず、
+    //   やり直しは Ctrl+Y だけが頼りだった（ボタンも無かった）。
+    const key = typeof event.key === 'string' ? event.key.toLowerCase() : '';
+    if ((event.ctrlKey || event.metaKey) && key === 'z' && !event.shiftKey) {
         event.preventDefault();
         if (!undo()) showToast('これ以上元に戻せません', 'info');
         return;
     }
-    if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+    if ((event.ctrlKey || event.metaKey) && (key === 'y' || (key === 'z' && event.shiftKey))) {
         event.preventDefault();
         if (!redo()) showToast('これ以上やり直せません', 'info');
         return;
@@ -504,9 +530,10 @@ window.addEventListener('keydown', (event) => {
         return;
     }
 
-    if ((event.key === 'r' || event.key === 'R') && !inInput) {
+    if (key === 'r' && !inInput) {
         if (state.selectedObjects.length > 0) {
             rotateSelection(Math.PI / 18);
+            snapshot();
         }
     }
 });
@@ -518,9 +545,13 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
     });
 });
 
-// ============= 撤销按钮 =============
+// ============= 元に戻す / やり直し =============
 document.getElementById('undo-btn').addEventListener('click', () => {
     if (!undo()) showToast('これ以上元に戻せません', 'info');
+});
+
+document.getElementById('redo-btn').addEventListener('click', () => {
+    if (!redo()) showToast('これ以上やり直せません', 'info');
 });
 
 // ============= 滑杆 =============
@@ -558,10 +589,11 @@ document.querySelectorAll('.plate-size-btn').forEach(btn => {
 // ============= 保存 / 加载 =============
 document.getElementById('save-btn').addEventListener('click', () => {
     const data = serialize();
-    localStorage.setItem('crane_plan', JSON.stringify(data));
-    
+    if (!safeSetItem('crane_plan', JSON.stringify(data))) {
+        showToast('保存できませんでした（ブラウザの保存容量を確認してください）', 'error', 4000);
+        return;
+    }
     showToast(`保存しました（${data.objects.length} 個のオブジェクト）`, 'success');
-    console.log('保存的数据:', data);
 });
 
 document.getElementById('load-btn').addEventListener('click', () => {
@@ -637,6 +669,9 @@ document.getElementById('import-json-btn').addEventListener('click', () => {
 document.getElementById('import-file').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) importProjectJSON(file);
+    // value を空にしないと、同じファイルを選び直しても change が発火せず
+    // 「2 回目の取込が無反応」になる。
+    e.target.value = '';
 });
 
 
@@ -908,7 +943,7 @@ function loadSettings() {
 }
 
 function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    return safeSetItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
 function openSettingsModal() {
@@ -1024,7 +1059,12 @@ function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escapeAttr(s) {
-    return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    // & を先に潰さないと、名前に含まれる "&amp;" が属性から読み戻すときに
+    // "&" へデコードされ、実際の保存キーと一致せず読込/削除が空振りする。
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 document.getElementById('scene-manager-btn').addEventListener('click', openSceneManager);
