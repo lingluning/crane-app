@@ -1342,9 +1342,14 @@ Full license text: https://openfontlicense.org</pre>
                 tab.textContent = '方案 C';
                 tab.addEventListener('click', () => setActiveEl(tab));
                 addBtn.before(tab);
-                setActiveEl(tab);
                 addBtn.toggleAttribute('disabled', true);
                 refresh();
+                // ⭐ 直接 setActiveEl せず、生成したタブを実際にクリックする。
+                //   + ボタン自身は .sheet-tab-add なので main.js の委譲ハンドラ
+                //   (closest('.sheet-tab')) に拾われず switchTab が走らない →
+                //   見た目だけ C がアクティブなのに、データは A に書かれ続ける。
+                //   タブをクリックすれば setActiveEl と switchTab('tabC') が揃う。
+                tab.click();
             });
 
             refresh();
