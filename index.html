@@ -1356,8 +1356,17 @@ Full license text: https://openfontlicense.org</pre>
         })();
 
         // シーンマネージャーの閉じるボタン（フッターのキャンセル）
-        document.getElementById('scene-manager-cancel')
-            .addEventListener('click', () => document.getElementById('scene-manager-modal').classList.add('hidden'));
+        // ⚠ #scene-manager-cancel はこの <script> より後ろで定義されているため、
+        //   パース時点ではまだ DOM に存在しない。以前は直接 addEventListener を
+        //   呼んでいて null 参照で TypeError → ボタンが無反応だった。
+        //   DOM 構築完了後に束縛する。
+        document.addEventListener('DOMContentLoaded', () => {
+            const cancelBtn = document.getElementById('scene-manager-cancel');
+            if (!cancelBtn) return;
+            cancelBtn.addEventListener('click', () => {
+                document.getElementById('scene-manager-modal').classList.add('hidden');
+            });
+        });
     </script>
 
     <!-- ============================================================
