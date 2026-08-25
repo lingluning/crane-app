@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { scene, raycaster, models, applyToonStyle } from './scene.js';
-import { state } from './state.js';
+import { state, bumpRevision } from './state.js';
 import { getCrane } from './crane-database.js';
 import { CSS2DObject } from './scene.js';
 
@@ -27,13 +27,36 @@ export function showToast(message, type = 'info', duration = 2500) {
 // ============= GPU リソース解放 =============
 // scene.remove() だけでは geometry/material は GPU に残る → 明示的に dispose
 // （半径円や中心マーカーは頻繁に作り直すため、放置するとメモリリークになる）
-function disposeObject3D(obj) {
+//
+// ⚠ ただし「自分が所有していない」リソースは触らないこと。
+//   クレーンは models.craneTemplate.clone() で作るが、three.js の clone() は
+//   geometry を共有する（material も、描線 LineSegments 側は共有のまま）。
+//   そのまま dispose するとテンプレート側の GPU バッファまで解放してしまい、
+//   次にクレーンを置くたびにメッシュ全体の再アップロードとシェーダ再コンパイルが
+//   走っていた。テンプレート由来のリソースには markTemplateOwned() で印を付け、
+//   ここでスキップする。
+function isTemplateOwned(res) {
+    return !!(res && res.userData && res.userData.__templateOwned);
+}
+
+export function markTemplateOwned(root) {
+    if (!root) return;
+    root.traverse(c => {
+        if (c.geometry) c.geometry.userData.__templateOwned = true;
+        if (c.material) {
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach(m => { m.userData = m.userData || {}; m.userData.__templateOwned = true; });
+        }
+    });
+}
+
+export function disposeObject3D(obj) {
     if (!obj) return;
     obj.traverse(c => {
-        if (c.geometry) c.geometry.dispose();
+        if (c.geometry && !isTemplateOwned(c.geometry)) c.geometry.dispose();
         if (c.material) {
-            if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
-            else c.material.dispose();
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            mats.forEach(m => { if (!isTemplateOwned(m)) m.dispose(); });
         }
     });
 }
@@ -78,6 +101,7 @@ export function removeObjectFully(obj) {
     disposeObject3D(obj);
     const idx = state.placedObjects.indexOf(obj);
     if (idx > -1) state.placedObjects.splice(idx, 1);
+    bumpRevision();
 }
 
 
@@ -100,11 +124,12 @@ export function selectTool(toolName) {
     
     document.getElementById('plate-options').classList.toggle('hidden', toolName !== 'plate');
     
-    // ⭐ 切换工具时取消正在画的
-    if (state.drawingPoints.length > 0) {
+    // ⭐ 切换工具时取消正在画的（プレビューは dispose まで行う）
+    if (state.drawingPoints.length > 0 || state.drawingPreview) {
         state.drawingPoints = [];
         if (state.drawingPreview) {
             scene.remove(state.drawingPreview);
+            disposeObject3D(state.drawingPreview);
             state.drawingPreview = null;
         }
     }
@@ -194,13 +219,27 @@ export function placeCrane(point) {
         return;
     }
     
+    // clone() は geometry を共有するため、テンプレート由来のリソースに
+    // 所有印を付けてからクローンする（印は geometry / material オブジェクト
+    // 自体に付くので、共有しているクローン側からも見える）。
+    // scene.js からではなくここで行うのは循環 import を避けるため。
+    if (!models.craneTemplate.userData.__ownershipMarked) {
+        markTemplateOwned(models.craneTemplate);
+        models.craneTemplate.userData.__ownershipMarked = true;
+    }
+
     const crane = models.craneTemplate.clone();
     crane.position.copy(point);
     crane.traverse(child => {
         if (child.isMesh) {
             child.castShadow = true;
             if (child.material) {
+                // インスタンス固有の material（ハイライトで色を書き換えるため）。
+                // clone() は userData も複製するのでテンプレート印を外し、
+                // このクローンを自分の所有物として dispose 対象に戻す。
                 child.material = child.material.clone();
+                child.material.userData = { ...child.material.userData };
+                delete child.material.userData.__templateOwned;
             }
         }
     });
@@ -233,6 +272,7 @@ export function placeCrane(point) {
     updateCounters();
     document.getElementById('crane-info').classList.remove('hidden');
     updateCraneButton();
+    bumpRevision();
 
     // ⭐ 放置后自动切到选择模式 + 去掉 ghost
     selectTool('select');
@@ -332,8 +372,9 @@ export function placeLoadPick(point) {
     
     // 加文字标签
     addLoadLabel(load, '🟢 起吊');
-    
+
     updateCounters();
+    bumpRevision();
 }
 
 // 卸荷位置（红色）
@@ -353,8 +394,9 @@ export function placeLoadDrop(point) {
     state.placedObjects.push(load);
     
     addLoadLabel(load, '🔴 卸荷');
-    
+
     updateCounters();
+    bumpRevision();
 }
 
 // 加文字标签（用之前的 CSS2DObject）
@@ -396,6 +438,7 @@ export function placePlate(point) {
     scene.add(plate);
     state.placedObjects.push(plate);
     updateCounters();
+    bumpRevision();
 }
 
 // ============= 选择 / 高亮 =============
@@ -517,6 +560,7 @@ export function ungroupSelection() {
 export function rotateSelection(angleRad) {
     const sel = state.selectedObjects;
     if (sel.length === 0) return;
+    bumpRevision();
 
     if (sel.length === 1) {
         sel[0].rotation.y += angleRad;
@@ -609,12 +653,35 @@ export function clearHighlight(obj) {
 }
 
 // ============= UI 更新 =============
+// showInfo は moveCrane 経由でドラッグ中は毎フレーム呼ばれる。
+// 以前は毎回 innerHTML を組み直しており、ドラッグのあいだ 60fps で
+// パネル全体の再パース＋レイアウトが走っていた。
+// 同じオブジェクト・同じ選択状態なら、変化する座標行だけ textContent で
+// 差し替える。
+const _infoCache = { obj: null, selCount: -1, grouped: null, posEl: null };
+
 export function showInfo(obj) {
     const panel = document.getElementById('info-panel');
     const content = document.getElementById('info-content');
+    if (!panel || !content) return;
 
     if (!obj) {
         panel.classList.add('hidden');
+        _infoCache.obj = null;
+        _infoCache.posEl = null;
+        return;
+    }
+
+    const selCount = state.selectedObjects.length;
+    const grouped = !!obj.userData.groupId;
+
+    // 構造が同じなら座標だけ更新して終わり（ドラッグ中の高頻度パス）
+    if (_infoCache.obj === obj &&
+        _infoCache.selCount === selCount &&
+        _infoCache.grouped === grouped &&
+        _infoCache.posEl && _infoCache.posEl.isConnected) {
+        _infoCache.posEl.textContent =
+            `位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}`;
         return;
     }
 
@@ -625,19 +692,22 @@ export function showInfo(obj) {
         plate: '🟨 敷鉄板'
     };
 
-    const selCount = state.selectedObjects.length;
-    const grouped = !!obj.userData.groupId;
     const multiInfo = selCount > 1
         ? `<div class="text-xs text-yellow-300 mt-1">${selCount} 個を選択中${grouped ? '（グループ）' : ''}</div>`
         : (grouped ? `<div class="text-xs text-yellow-300 mt-1">グループ所属</div>` : '');
 
     content.innerHTML = `
         <div>種類: ${typeNames[obj.userData.type] || obj.userData.type}</div>
-        <div>位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}</div>
+        <div data-info-pos>位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}</div>
         ${multiInfo}
         <div class="text-xs text-slate-400 mt-2">Ctrl+クリックで多選 / 右クリックでメニュー</div>
     `;
     panel.classList.remove('hidden');
+
+    _infoCache.obj = obj;
+    _infoCache.selCount = selCount;
+    _infoCache.grouped = grouped;
+    _infoCache.posEl = content.querySelector('[data-info-pos]');
 }
 
 export function updateCounters() {
@@ -665,6 +735,7 @@ export function updateCraneButton() {
 
 export function updateCraneRadius(crane, radiusMeters) {
     crane.userData.workRadius = radiusMeters;
+    bumpRevision();
     if (crane.userData.radiusCircle) {
         rebuildCraneRadiusCircle(crane);
     } else {
@@ -679,6 +750,7 @@ export function updateCraneRadius(crane, radiusMeters) {
 // 任意の placedObject を (dx, dz) だけ平行移動。クレーンは付属物
 // （中心マーカー・作業半径円）の同期も含む。型ディスパッチを 1 か所に集約。
 export function translatePlaced(obj, dx, dz, opts = {}) {
+    if (dx !== 0 || dz !== 0) bumpRevision();
     if (obj.userData.type === 'crane') {
         moveCrane(obj, dx, dz, opts);
     } else {

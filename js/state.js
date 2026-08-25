@@ -17,4 +17,15 @@ export const state = {
     currentOutriggerMode: 'maxFull',    // 当前张出模式 key
 
     actualLoad: 5.0,
+
+    // ⭐ 変更カウンタ。オブジェクトの増減・移動・回転や、安全計算に効く
+    //   設定（吊荷重量 / ブーム長 / アウトリガ / 機種）が変わるたびに +1。
+    //   安全パネル・ブーム表示・旋回チェック・接地圧はこれを見て、
+    //   変化が無いフレームでは丸ごと再計算をスキップする。
+    revision: 0,
 };
+
+// 安全計算に影響する変更があったことを通知する。
+export function bumpRevision() {
+    state.revision++;
+}
