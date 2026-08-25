@@ -161,12 +161,36 @@ export function safeSetItem(key, value) {
     }
 }
 
+const AUTOSAVE_KEY = 'crane_plan_auto';
+
 let _autoSaveTimer = null;
 export function startAutoSave(intervalMs = 30000) {
     if (_autoSaveTimer) clearInterval(_autoSaveTimer);
     _autoSaveTimer = setInterval(() => {
-        if (state.placedObjects.length > 0) {
-            safeSetItem('crane_plan_auto', JSON.stringify(serialize()));
-        }
+        // ⚠ 以前は placedObjects.length > 0 のときだけ書いていた。
+        //   全部消しても最後の「中身があった状態」が残り続けるため、
+        //   次回の復元で削除したはずのものが生き返っていた。
+        //   実際の状態をそのまま映すよう、空でも書く。
+        safeSetItem(AUTOSAVE_KEY, JSON.stringify(serialize()));
     }, intervalMs);
+}
+
+// 自動保存の読み出し。
+// ⚠ これまで crane_plan_auto は 30 秒ごとに書かれるだけで、
+//   どこからも読まれていなかった。タブを閉じてもクラッシュしても
+//   復元する手立てが無く、README の「auto-save」は実質機能していなかった。
+export function loadAutoSave() {
+    try {
+        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || !Array.isArray(data.objects)) return null;
+        return data;
+    } catch {
+        return null;
+    }
+}
+
+export function clearAutoSave() {
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ }
 }

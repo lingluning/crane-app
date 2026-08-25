@@ -13,7 +13,10 @@ import {
     ungroupSelection, setSelection, findRootObject
 } from './tools.js';
 
-import { serialize, deserialize, startAutoSave, safeSetItem } from './persistence.js';
+import {
+    serialize, deserialize, startAutoSave, safeSetItem,
+    loadAutoSave, clearAutoSave
+} from './persistence.js';
 
 import { state, bumpRevision } from './state.js';
 
@@ -1109,14 +1112,54 @@ attachWeatherRefresh();
 updateWeather();
 setInterval(updateWeather, 30 * 60 * 1000);
 
+// ============= 前回作業の復元 =============
+// 自動保存は 30 秒ごとに書かれるが、これまで読み出す側が無かったため、
+// タブを閉じてもクラッシュしても復元手段が無かった。
+// 起動時に中身のある自動保存があれば復元し、そのことを通知する。
+// 「新規作成」で破棄できるので、続きから始めたい人も白紙で始めたい人も
+// 1 クリックで済む。
+function restoreAutoSaveIfAny() {
+    const data = loadAutoSave();
+    if (!data || data.objects.length === 0) return false;
+
+    deserialize(data);
+
+    const when = data.savedAt ? new Date(data.savedAt) : null;
+    const stamp = when && !isNaN(when)
+        ? when.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+
+    showToast(
+        `前回の作業を復元しました（${data.objects.length} 個${stamp ? ' · ' + stamp : ''}）`,
+        'info',
+        0,                                  // 操作するまで消さない
+        {
+            label: '新規作成',
+            onClick: () => {
+                deserialize({ objects: [] });
+                clearAutoSave();
+                initSnapshot();
+                showToast('新しいプランを開始しました', 'success');
+            }
+        }
+    );
+    return true;
+}
+
 loadModels(() => {
-    initSnapshot();
+    const restored = restoreAutoSaveIfAny();
+    if (restored) selectTool('select');   // 続きの作業なので配置モードにしない
+    initSnapshot();                       // 復元後の状態を undo の起点にする
+
+    // ⚠ 自動保存は「復元を試みたあと」に開始する。
+    //   自動保存は空の状態も書くようになったので、先にタイマーを回すと、
+    //   モデル読込に失敗して復元できなかった場合に 30 秒後の書き込みが
+    //   空の状態で上書きし、復元可能だった作業を消してしまう。
+    startAutoSave(30000);
+    setInterval(saveCurrentTab, 30000);
+
     console.log('🎉 全部加载完成');
 });
 
 selectTool('crane');
 startAnimationLoop();
-startAutoSave(30000);
-
-// 自动保存时同步当前标签页
-setInterval(saveCurrentTab, 30000);

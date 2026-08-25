@@ -8,9 +8,15 @@ import { CSS2DObject } from './scene.js';
 // ============= Toast 通知 =============
 const TOAST_ICONS = { warning: '⚠️', error: '❌', info: 'ℹ️', success: '✅' };
 
-export function showToast(message, type = 'info', duration = 2500) {
+/**
+ * @param {string} message
+ * @param {string} type   warning | error | info | success
+ * @param {number} duration  ミリ秒。0 なら自動で消えない（操作を促す通知用）
+ * @param {{label: string, onClick: Function}} [action]  任意のボタン
+ */
+export function showToast(message, type = 'info', duration = 2500, action = null) {
     const container = document.getElementById('toast-container');
-    if (!container) return;
+    if (!container) return null;
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -20,14 +26,41 @@ export function showToast(message, type = 'info', duration = 2500) {
     const iconSpan = document.createElement('span');
     iconSpan.textContent = TOAST_ICONS[type] || '';
     const msgSpan = document.createElement('span');
+    msgSpan.className = 'toast-msg';
     msgSpan.textContent = message;
     toast.append(iconSpan, msgSpan);
-    container.appendChild(toast);
 
-    setTimeout(() => {
+    const dismiss = () => {
+        if (!toast.isConnected) return;
         toast.classList.add('leaving');
         toast.addEventListener('animationend', () => toast.remove(), { once: true });
-    }, duration);
+    };
+
+    if (action && action.label) {
+        const btn = document.createElement('button');
+        btn.className = 'toast-action';
+        btn.textContent = action.label;
+        btn.addEventListener('click', () => {
+            try { action.onClick && action.onClick(); } finally { dismiss(); }
+        });
+        toast.appendChild(btn);
+    }
+
+    container.appendChild(toast);
+
+    // duration 0 は「消さない」。閉じるボタンを付けて操作を待つ。
+    if (duration > 0) {
+        setTimeout(dismiss, duration);
+    } else {
+        const close = document.createElement('button');
+        close.className = 'toast-action toast-close';
+        close.textContent = '✕';
+        close.title = '閉じる';
+        close.addEventListener('click', dismiss);
+        toast.appendChild(close);
+    }
+
+    return dismiss;
 }
 
 

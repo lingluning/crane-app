@@ -463,6 +463,16 @@
             pointer-events: auto;
         }
         .toast.leaving { animation: toast-out .2s ease-in forwards; }
+        .toast-msg { flex: 1; min-width: 0; }
+        .toast-action {
+            flex-shrink: 0; align-self: center;
+            background: var(--surface-alt); color: var(--text);
+            border: 1px solid var(--border); border-radius: 3px;
+            padding: 3px 8px; font-size: 11px; font-family: inherit;
+            cursor: pointer; line-height: 1.4;
+        }
+        .toast-action:hover { background: var(--border); }
+        .toast-close { padding: 3px 6px; color: var(--text-faint); }
         .toast-success { border-left-color: var(--ok); }
         .toast-warning { border-left-color: var(--warn); background: var(--pill-warn-bg); }
         .toast-error   { border-left-color: var(--danger); background: var(--pill-danger-bg); }
