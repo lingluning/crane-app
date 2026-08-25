@@ -56,7 +56,11 @@ function checkOneLoadPoint(craneId, outriggerMode, boomLength, distance, actualL
         };
     }
 
-    const usage = (actualLoad / loadResult.capacity) * 100;
+    // capacity が 0 だと usage が Infinity になり、そのまま toFixed して
+    // 画面に "Infinity %" と出ていた。isInRange でも 0 は起こりうるので防ぐ。
+    const usage = loadResult.capacity > 0
+        ? (actualLoad / loadResult.capacity) * 100
+        : Infinity;
     const status = evaluateSafety(actualLoad, loadResult.capacity);
 
     return {
@@ -76,9 +80,14 @@ export function performSafetyCheck() {
     if (!data) return null;
 
     const crane = data.crane;
-    const craneId = crane.userData.craneId;
-    const outriggerMode = state.currentOutriggerMode;
-    const boomLength = state.currentBoomLength;
+    // 3 つとも同じ出所から取る。以前は craneId だけ userData、
+    // outriggerMode / boomLength は global state から読んでいたため、
+    // 保存済みプランを読み込んだ直後など、機種と構成がちぐはぐな
+    // 組み合わせで載荷表を引いてしまうことがあった。
+    // （placeCrane も serialize も 3 つとも userData に持たせている）
+    const craneId = crane.userData.craneId || state.currentCraneId;
+    const outriggerMode = crane.userData.outriggerMode || state.currentOutriggerMode;
+    const boomLength = crane.userData.boomLength || state.currentBoomLength;
     const checks = [];
 
     data.pickDistances.forEach((d, i) => {

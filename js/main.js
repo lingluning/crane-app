@@ -740,16 +740,28 @@ function syncRadiusSliderUpperBound() {
     );
 
     const slider = document.getElementById('radius-slider');
-    if (slider) {
-        slider.max = maxR;
-        const crane = state.placedObjects.find(o => o.userData.type === 'crane');
-        if (crane && crane.userData.workRadius > maxR) {
-            import('./tools.js').then(({ updateCraneRadius }) => {
-                updateCraneRadius(crane, maxR);
-                slider.value = maxR;
-                document.getElementById('radius-value').textContent = maxR.toFixed(1);
-            });
-        }
+    if (!slider) return;
+
+    const radiusValueEl = document.getElementById('radius-value');
+    const crane = state.placedObjects.find(o => o.userData.type === 'crane');
+
+    // 載荷データが無い構成（多くの boom 長は未入力）では滑杆を無効化する。
+    // 架空の上限 15m を出して「引けるのに引くとデータ未入力」になるのを防ぐ。
+    if (maxR == null) {
+        slider.disabled = true;
+        slider.title = 'この構成の載荷データが未入力のため、作業半径を設定できません';
+        if (radiusValueEl) radiusValueEl.textContent = '－';
+        return;
+    }
+
+    slider.disabled = false;
+    slider.title = '';
+    slider.max = maxR;
+
+    if (crane && crane.userData.workRadius > maxR) {
+        updateCraneRadius(crane, maxR);
+        slider.value = maxR;
+        if (radiusValueEl) radiusValueEl.textContent = maxR.toFixed(1);
     }
 }
 

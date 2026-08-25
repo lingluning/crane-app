@@ -274,6 +274,26 @@ export function getBoomLoadCurve(craneId, outriggerMode, boomLength) {
 }
 
 /**
+ * 作業半径からブーム起伏角を概算し、危険角度域に入っているか判定する。
+ *
+ * 起伏角 θ ≈ acos(作業半径 / ブーム長)。ブームフット位置やブームヘッドの
+ * オフセットを無視した近似で、計画時の目安として使う。
+ * criticalAngle は「これ以下になると危険」な最小起伏角（度）を想定。
+ *
+ * criticalAngle が未設定（null / undefined）のデータでは常に false。
+ */
+function isBelowCriticalAngle(curve, radius) {
+    const critical = curve.criticalAngle;
+    if (critical == null) return false;
+
+    const boomLength = curve.boomLength;
+    if (!boomLength || radius > boomLength) return false;
+
+    const angleDeg = Math.acos(radius / boomLength) * (180 / Math.PI);
+    return angleDeg <= critical;
+}
+
+/**
  * 查询载荷
  * @returns { capacity, isInRange, isCriticalAngle, message }
  */
@@ -330,10 +350,12 @@ export function queryLoadChart(craneId, outriggerMode, boomLength, radius) {
             const ratio = (radius - r1) / (r2 - r1);
             const capacity = c1 + (c2 - c1) * ratio;
 
-            let isCriticalAngle = false;
-            if (curve.criticalAngle !== null) {
-                isCriticalAngle = true;
-            }
+            // この半径におけるブーム起伏角と criticalAngle を比較する。
+            // 以前は「curve.criticalAngle が null でなければ常に true」で、
+            // 半径を一切見ずに全域を危険角度として扱っていた（現在は
+            // 全データが null のため表面化していないが、実データを入れた
+            // 瞬間に表全体が誤警告になる）。
+            const isCriticalAngle = isBelowCriticalAngle(curve, radius);
 
             return {
                 capacity,
@@ -354,10 +376,16 @@ export function queryLoadChart(craneId, outriggerMode, boomLength, radius) {
 
 /**
  * 获取某模式 + boom 的最大可用半径（用于半径滑杆上限）
+ *
+ * 載荷データが無い組み合わせでは null を返す。
+ * 以前は 15 を返していたため、points が空（多くの boom 長は "TODO: 录入"
+ * のまま）でも滑杆が 15m まで動き、実際に引くと「データ未入力」になる、
+ * という架空の作業範囲を提示していた。呼び出し側は null を
+ * 「この構成は選べない」として扱うこと。
  */
 export function getMaxRadius(craneId, outriggerMode, boomLength) {
     const curve = getBoomLoadCurve(craneId, outriggerMode, boomLength);
-    if (!curve || !curve.points || curve.points.length === 0) return 15;
+    if (!curve || !curve.points || curve.points.length === 0) return null;
     return curve.points[curve.points.length - 1].radius;
 }
 
