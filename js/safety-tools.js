@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { scene, models } from './scene.js';
 import { state } from './state.js';
-import { updateCounters, showToast } from './tools.js';
+import { updateCounters, showToast, getCraneCenter } from './tools.js';
 import { CSS2DObject } from './scene.js';
+import { circleIntersectsPolygonXZ } from './geometry-2d.js';
 
 
 // ============= 地形 Y サンプラ：(x, z) → 地形高さ =============
@@ -456,24 +457,27 @@ export function checkSafety() {
 
     cranes.forEach(crane => {
         if (!crane.userData.radiusCircle) return;
-        const radiusBox = new THREE.Box3().setFromObject(crane.userData.radiusCircle);
-        let craneDanger = false;
 
-        forbiddens.forEach(zone => {
-            const zoneBox = new THREE.Box3().setFromObject(zone);
-            if (radiusBox.intersectsBox(zoneBox)) craneDanger = true;
-        });
+        // 作業半径の円板と禁止区多角形を実形状で判定する。
+        // 以前は Box3 同士（＝半径円の外接正方形）で見ていたため、
+        // 円の外側でも外接正方形の角にかかる禁止区を「重複」と誤検出した
+        // （最悪で半径の √2 倍まで）。安全警告の空振りは警告自体を
+        // 信用されなくするので、実形状で判定する。
+        const center = getCraneCenter(crane);
+        const radius = crane.userData.workRadius || 10;
 
-        if (craneDanger) {
-            anyDanger = true;
-            crane.userData.radiusCircle.material.color.setHex(0xff4444);
-            crane.userData.radiusCircle.material.opacity = 0.65;
-        } else if (forbiddens.length > 0) {
-            // 有禁止区但没冲突 → 绿色
-            crane.userData.radiusCircle.material.color.setHex(0x00cc66);
-            crane.userData.radiusCircle.material.opacity = 0.35;
-        }
-        // 没有禁止区时不改变颜色（由 safety-display.js 按荷载状态控制）
+        const craneDanger = forbiddens.some(zone =>
+            circleIntersectsPolygonXZ(center.x, center.z, radius, zone.userData.points)
+        );
+
+        if (craneDanger) anyDanger = true;
+
+        // ⭐ 円の色はここでは触らない。
+        //   以前は checkSafety（500ms）と safety-display（200ms）が
+        //   同じ material.color を別々の基準で書き合っていて、禁止区と
+        //   吊点が同時にあると色が点滅していた。判定結果だけ残し、
+        //   実際の着色は safety-display.js に一本化する。
+        crane.userData.zoneConflict = craneDanger;
     });
 
     const radiusEl = document.getElementById('safety-radius');

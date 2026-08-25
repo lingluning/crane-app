@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { scene } from './scene.js';
 import { state } from './state.js';
 import { getCraneCenter } from './tools.js';
+import {
+    polylineIntersectsPolygonXZ,
+    pointInAnnularSectorXZ
+} from './geometry-2d.js';
 
 const N_ARC = 36;
 const N_RADII = 6;
@@ -22,26 +26,16 @@ export function clearSwingVisuals() {
     }
 }
 
-function pointInPolygonXZ(px, pz, polygon) {
-    let inside = false;
-    const n = polygon.length;
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-        const xi = polygon[i].x, zi = polygon[i].z;
-        const xj = polygon[j].x, zj = polygon[j].z;
-        const intersect = ((zi > pz) !== (zj > pz)) &&
-            (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
-        if (intersect) inside = !inside;
-    }
-    return inside;
-}
-
 function shortArcAngles(a1, a2) {
     let diff = ((a2 - a1) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
     if (diff > Math.PI) diff -= Math.PI * 2;
     return { start: a1, delta: diff };
 }
 
-function computeSwingArcPoints(craneCenter, pick, drop) {
+// 掃引領域を「半径ごとの折れ線の集合」＋掃引パラメータとして返す。
+// 折れ線に分けておくのは、点の内外判定ではなく線分と多角形辺の交差で
+// 判定するため（点だけ見ていると細い禁止区が採样点の隙間をすり抜ける）。
+function computeSwingSweep(craneCenter, pick, drop) {
     const dx1 = pick.x - craneCenter.x, dz1 = pick.z - craneCenter.z;
     const dx2 = drop.x - craneCenter.x, dz2 = drop.z - craneCenter.z;
 
@@ -53,23 +47,41 @@ function computeSwingArcPoints(craneCenter, pick, drop) {
 
     const { start, delta } = shortArcAngles(a1, a2);
 
-    const points = [];
-
+    const polylines = [];
     for (let ri = 0; ri < N_RADII; ri++) {
         const t = N_RADII > 1 ? ri / (N_RADII - 1) : 0.5;
         const r = r1 + (r2 - r1) * t;
+        const line = [];
         for (let i = 0; i <= N_ARC; i++) {
             const frac = i / N_ARC;
             const angle = start + delta * frac;
-            points.push(new THREE.Vector3(
-                craneCenter.x + Math.cos(angle) * r,
-                craneCenter.y + 0.15,
-                craneCenter.z + Math.sin(angle) * r
-            ));
+            line.push({
+                x: craneCenter.x + Math.cos(angle) * r,
+                z: craneCenter.z + Math.sin(angle) * r
+            });
         }
+        polylines.push(line);
     }
 
-    return points;
+    return { polylines, start, delta, r1, r2 };
+}
+
+// 掃引領域が禁止区多角形に触れるか。
+//   1) 各半径の弧（折れ線）が多角形の辺と交差 / 内部に入る
+//   2) 多角形の頂点が掃引扇環の内側にある
+// 1 だけだと弧と弧の隙間にすっぽり収まる小さな禁止区を取りこぼすため、
+// 2 で塞ぐ。
+function sweepHitsZone(sweep, polygon) {
+    const hitByArc = sweep.polylines.some(
+        line => polylineIntersectsPolygonXZ(line, polygon)
+    );
+    if (hitByArc) return true;
+
+    return polygon.some(v => pointInAnnularSectorXZ(
+        v.x, v.z,
+        sweep.center.x, sweep.center.z,
+        sweep.start, sweep.delta, sweep.r1, sweep.r2
+    ));
 }
 
 function buildArcLineObject(craneCenter, pick, drop) {
@@ -128,13 +140,12 @@ export function updateSwingCheck() {
 
     picks.forEach((pick, pi) => {
         drops.forEach((drop, di) => {
-            const arcPoints = computeSwingArcPoints(craneCenter, pick.position, drop.position);
+            const sweep = computeSwingSweep(craneCenter, pick.position, drop.position);
+            sweep.center = craneCenter;
 
             const violations = [];
             forbiddenZones.forEach(zone => {
-                const polygon = zone.userData.points;
-                const hit = arcPoints.some(p => pointInPolygonXZ(p.x, p.z, polygon));
-                if (hit) violations.push(zone);
+                if (sweepHitsZone(sweep, zone.userData.points)) violations.push(zone);
             });
 
             results.push({
