@@ -41,8 +41,20 @@ export function updateBoomVisuals() {
         const dz = loadPos.z - craneCenter.z;
         const dy = loadPos.y - craneCenter.y;
         const horizontalDist = Math.sqrt(dx * dx + dz * dz);
-        const boomAngleDeg = Math.atan2(dy, horizontalDist) * (180 / Math.PI);
         const reachDist = Math.sqrt(horizontalDist * horizontalDist + dy * dy);
+
+        // ブーム起伏角 θ ≈ acos(作業半径 / ブーム長)。
+        // 以前は atan2(dy, 水平距離) を「ブーム角」として出していたが、
+        // これは吊車中心から吊点への「見下ろし角」であって起伏角ではない。
+        // 吊点は地面上にあるので値はほぼ 0 か負になり、現場向けの
+        // 表示としては誤解を招く。
+        const boomLength = crane.userData.boomLength || state.currentBoomLength;
+        const boomAngleDeg = (boomLength && horizontalDist <= boomLength)
+            ? Math.acos(horizontalDist / boomLength) * (180 / Math.PI)
+            : null;
+        const boomAngleText = boomAngleDeg === null
+            ? '範囲外'
+            : `${boomAngleDeg.toFixed(1)}°`;
 
         const lineMat = new THREE.LineBasicMaterial({
             color,
@@ -79,13 +91,19 @@ export function updateBoomVisuals() {
         arc.rotation.x = -Math.PI / 2;
         arc.position.set(craneCenter.x, craneCenter.y + 0.01, craneCenter.z);
 
+        // RingGeometry は XY 平面で 0〜90° に張られ、rotation.x=-90° で
+        // 世界 XZ に倒れる。このとき世界方位角は -(θ + rotation.z) になるため、
+        // 90° 扇形の中心を吊点方向 angle に合わせるには
+        //   -(rotation.z + 45°) = angle  →  rotation.z = -(angle + 45°)
+        // が正しい。以前は -(angle - 22.5°) で、扇形が吊点から 67.5° ずれた
+        // 方向に描かれていた。
         const angle = Math.atan2(dz, dx);
-        arc.rotation.z = -(angle - Math.PI / 8);
+        arc.rotation.z = -(angle + Math.PI / 4);
         arc.renderOrder = 9;
         scene.add(arc);
         boomVisuals.push(arc);
 
-        const labelText = `${labelPrefix}: ${reachDist.toFixed(1)}m / ${boomAngleDeg.toFixed(1)}°`;
+        const labelText = `${labelPrefix}: ${reachDist.toFixed(1)}m / ${boomAngleText}`;
         const div = document.createElement('div');
         div.style.cssText = [
             'background:rgba(0,0,0,0.55)',
