@@ -5,6 +5,20 @@ import { getCraneCenter } from './tools.js';
 
 const boomVisuals = [];
 
+// Signature of the inputs the visuals are derived from. This runs on a 200ms
+// timer, so without it an idle scene churns geometry/material allocations
+// (3 per load point, 5×/second) purely to redraw the same picture.
+let lastSignature = null;
+
+function computeSignature(craneCenter, loadPoints) {
+    let sig = `${craneCenter.x.toFixed(3)},${craneCenter.y.toFixed(3)},${craneCenter.z.toFixed(3)}`;
+    for (const lp of loadPoints) {
+        const p = lp.position;
+        sig += `|${lp.userData.type}:${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}`;
+    }
+    return sig;
+}
+
 export function clearBoomVisuals() {
     for (const obj of boomVisuals) {
         if (obj.element && obj.element.parentNode) {
@@ -15,19 +29,27 @@ export function clearBoomVisuals() {
         if (obj.material) obj.material.dispose();
     }
     boomVisuals.length = 0;
+    lastSignature = null;
 }
 
 export function updateBoomVisuals() {
-    clearBoomVisuals();
-
     const crane = state.placedObjects.find(o => o.userData.type === 'crane');
-    if (!crane) return;
+    const loadPoints = crane
+        ? state.placedObjects.filter(
+            o => o.userData.type === 'loadPick' || o.userData.type === 'loadDrop')
+        : [];
+
+    if (!crane || loadPoints.length === 0) {
+        if (boomVisuals.length > 0) clearBoomVisuals();
+        return;
+    }
 
     const craneCenter = getCraneCenter(crane);
+    const signature = computeSignature(craneCenter, loadPoints);
+    if (signature === lastSignature) return;
 
-    const loadPoints = state.placedObjects.filter(
-        o => o.userData.type === 'loadPick' || o.userData.type === 'loadDrop'
-    );
+    clearBoomVisuals();
+    lastSignature = signature;
 
     for (const lp of loadPoints) {
         const isPick = lp.userData.type === 'loadPick';
@@ -56,31 +78,29 @@ export function updateBoomVisuals() {
         scene.add(line);
         boomVisuals.push(line);
 
-        const arcSegments = 64;
-        const arcAngle = Math.PI * 2;
-        const innerRadius = horizontalDist - 0.15;
-        const outerRadius = horizontalDist + 0.15;
-        const ringGeo = new THREE.RingGeometry(
-            Math.max(0.1, innerRadius),
-            outerRadius,
-            arcSegments,
-            1,
-            0,
-            arcAngle * 0.25
+        // Reach arc, centred on the bearing to this load point.
+        // RingGeometry builds in XY; after rotation.x = -90° a local angle θ lands at
+        // world azimuth −θ, so the sweep has to start at −bearing − half to come out centred.
+        const bearing = Math.atan2(dz, dx);
+        const ARC_SPAN = Math.PI / 2;
+        const arc = new THREE.Mesh(
+            new THREE.RingGeometry(
+                Math.max(0.05, horizontalDist - 0.15),
+                Math.max(0.20, horizontalDist + 0.15),
+                48, 1,
+                -bearing - ARC_SPAN / 2,
+                ARC_SPAN
+            ),
+            new THREE.MeshBasicMaterial({
+                color,
+                transparent: true,
+                opacity: 0.35,
+                side: THREE.DoubleSide,
+                depthTest: false,
+            })
         );
-        const ringMat = new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: 0.35,
-            side: THREE.DoubleSide,
-            depthTest: false,
-        });
-        const arc = new THREE.Mesh(ringGeo, ringMat);
         arc.rotation.x = -Math.PI / 2;
         arc.position.set(craneCenter.x, craneCenter.y + 0.01, craneCenter.z);
-
-        const angle = Math.atan2(dz, dx);
-        arc.rotation.z = -(angle - Math.PI / 8);
         arc.renderOrder = 9;
         scene.add(arc);
         boomVisuals.push(arc);
