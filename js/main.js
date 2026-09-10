@@ -31,10 +31,13 @@ import { exportProjectJSON, importProjectJSON } from './export.js';
 import { updateSafetyDisplay } from './safety-display.js';
 import { getCrane, getMaxRadius, getAllCranes } from './crane-database.js';
 import { updateWeather, attachWeatherRefresh } from './weather.js';
-import { snapshot, initSnapshot, undo, redo, canUndo, canRedo } from './undo-stack.js';
-import { switchTab, saveCurrentTab, getActiveTabId, listSavedScenes, saveSceneAs, loadSceneByName, deleteSceneByName, renameScene } from './scenarios.js';
-import { updateBoomVisuals, clearBoomVisuals } from './boom-visual.js';
-import { updateSwingCheck, clearSwingVisuals } from './swing-check.js';
+import { snapshot, initSnapshot, undo, redo } from './undo-stack.js';
+import {
+    switchTab, saveCurrentTab, getActiveTabId, restoreActiveTab,
+    listSavedScenes, saveSceneAs, loadSceneByName, deleteSceneByName, renameScene
+} from './scenarios.js';
+import { updateBoomVisuals } from './boom-visual.js';
+import { updateSwingCheck } from './swing-check.js';
 import { updateGroundPressure } from './ground-pressure.js';
 
 
@@ -924,14 +927,49 @@ document.querySelectorAll('.settings-tab').forEach(tab => {
     });
 });
 
-// ============= シートタブ → シナリオ切替 =============
+// ============= シートタブ（方案 A/B/C）=============
+// scenarios.js の activeTabId と .active クラスがずれないよう、切替も + 追加も
+// すべてここで扱う（index.html 側では click を張らない）。
+const MAX_TABS = 3;
+
+// index.html ships 方案 A / B; 方案 C is created on demand. A reload while C was
+// active has to recreate its button before syncTabUI can mark it .active.
+function ensureTabButton(tabId) {
+    const container = document.getElementById('sheet-tabs');
+    if (container.querySelector(`.sheet-tab[data-tab-id="${tabId}"]`)) return;
+    const tab = document.createElement('button');
+    tab.className = 'sheet-tab';
+    tab.dataset.tabId = tabId;
+    tab.textContent = `方案 ${tabId.slice(-1)}`;
+    document.getElementById('sheet-tab-add').before(tab);
+}
+
+function syncTabUI() {
+    ensureTabButton(getActiveTabId());
+    const tabs = document.getElementById('sheet-tabs').querySelectorAll('.sheet-tab');
+    const active = getActiveTabId();
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tabId === active));
+    document.getElementById('sheet-tab-add').toggleAttribute('disabled', tabs.length >= MAX_TABS);
+    document.getElementById('sheet-tabs-counter').textContent = `${tabs.length} / ${MAX_TABS}`;
+}
+
 document.getElementById('sheet-tabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.sheet-tab');
     if (!tab) return;
     const tabId = tab.dataset.tabId;
     if (!tabId || tabId === getActiveTabId()) return;
     switchTab(tabId);
+    syncTabUI();
 });
+
+document.getElementById('sheet-tab-add').addEventListener('click', () => {
+    const count = document.getElementById('sheet-tabs').querySelectorAll('.sheet-tab').length;
+    if (count >= MAX_TABS) return;
+    switchTab('tabC');   // syncTabUI creates the button for whichever tab is active
+    syncTabUI();
+});
+
+syncTabUI();
 
 // ============= シーンファイル管理モーダル =============
 function openSceneManager() {
@@ -959,6 +997,7 @@ function renderSceneList() {
             </div>
             <div class="scene-file-actions">
                 <button class="action-btn scene-load-btn" data-name="${escapeAttr(s._name)}">読込</button>
+                <button class="action-btn scene-rename-btn" data-name="${escapeAttr(s._name)}">改名</button>
                 <button class="action-btn scene-delete-btn" style="color:var(--danger)" data-name="${escapeAttr(s._name)}">削除</button>
             </div>
         </div>`;
@@ -974,6 +1013,7 @@ function escapeAttr(s) {
 
 document.getElementById('scene-manager-btn').addEventListener('click', openSceneManager);
 document.getElementById('scene-manager-close').addEventListener('click', closeSceneManager);
+document.getElementById('scene-manager-cancel').addEventListener('click', closeSceneManager);
 document.getElementById('scene-manager-modal').addEventListener('click', (e) => {
     if (e.target.id === 'scene-manager-modal') closeSceneManager();
 });
@@ -982,6 +1022,12 @@ document.getElementById('scene-save-as-btn').addEventListener('click', () => {
     const input = document.getElementById('scene-save-name');
     const name = input.value.trim();
     if (!name) { showToast('シーン名を入力してください', 'warning'); return; }
+
+    if (listSavedScenes().some(s => s._name === name) &&
+        !confirm(`「${name}」は既に存在します。上書きしますか？`)) {
+        return;
+    }
+
     if (saveSceneAs(name)) {
         showToast(`「${name}」を保存しました`, 'success');
         input.value = '';
@@ -990,14 +1036,33 @@ document.getElementById('scene-save-as-btn').addEventListener('click', () => {
 });
 
 document.getElementById('scene-file-list').addEventListener('click', (e) => {
-    const loadBtn = e.target.closest('.scene-load-btn');
-    const delBtn  = e.target.closest('.scene-delete-btn');
+    const loadBtn   = e.target.closest('.scene-load-btn');
+    const renameBtn = e.target.closest('.scene-rename-btn');
+    const delBtn    = e.target.closest('.scene-delete-btn');
+
     if (loadBtn) {
         const name = loadBtn.dataset.name;
         if (loadSceneByName(name)) {
             showToast(`「${name}」を読み込みました`, 'success');
             closeSceneManager();
         }
+        return;
+    }
+    if (renameBtn) {
+        const name = renameBtn.dataset.name;
+        const next = prompt('新しいシーン名', name);
+        if (next === null) return;
+        const trimmed = next.trim();
+        if (!trimmed) { showToast('シーン名を入力してください', 'warning'); return; }
+        if (trimmed === name) return;
+        if (listSavedScenes().some(s => s._name === trimmed)) {
+            showToast(`「${trimmed}」は既に存在します`, 'warning');
+            return;
+        }
+        renameScene(name, trimmed);
+        renderSceneList();
+        showToast(`「${trimmed}」に変更しました`, 'success');
+        return;
     }
     if (delBtn) {
         const name = delBtn.dataset.name;
@@ -1015,13 +1080,15 @@ updateWeather();
 setInterval(updateWeather, 30 * 60 * 1000);
 
 loadModels(() => {
+    // Models are required before deserialize can rebuild a crane, so the active
+    // tab's scene is restored here rather than at module load.
+    restoreActiveTab();
+    syncTabUI();
     initSnapshot();
     console.log('🎉 全部加载完成');
 });
 
 selectTool('crane');
 startAnimationLoop();
-startAutoSave(30000);
-
-// 自动保存时同步当前标签页
-setInterval(saveCurrentTab, 30000);
+// 自動保存と作業タブへの保存は同じ serialize() 結果を使い回す
+startAutoSave(30000, data => saveCurrentTab(data));
