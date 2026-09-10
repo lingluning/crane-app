@@ -8,18 +8,30 @@ const N_RADII = 6;
 
 const _swingVisuals = [];
 
+// Everything pushed into _swingVisuals is a plain THREE.Line built by
+// buildArcLineObject — one geometry, one material, no children.
+let _lastSignature = null;
+
 export function clearSwingVisuals() {
     while (_swingVisuals.length > 0) {
-        const obj = _swingVisuals.pop();
-        scene.remove(obj);
-        obj.traverse(c => {
-            if (c.geometry) c.geometry.dispose();
-            if (c.material) {
-                if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
-                else c.material.dispose();
-            }
-        });
+        const line = _swingVisuals.pop();
+        scene.remove(line);
+        line.geometry.dispose();
+        line.material.dispose();
     }
+    _lastSignature = null;
+}
+
+// The arcs only change when the crane, a load point, or a forbidden zone moves.
+// Recomputing 36×6 point-in-polygon tests twice a second on a static scene is waste.
+function computeSignature(craneCenter, picks, drops, zones) {
+    let sig = `${craneCenter.x.toFixed(3)},${craneCenter.z.toFixed(3)}`;
+    for (const o of picks) sig += `|P${o.position.x.toFixed(3)},${o.position.z.toFixed(3)}`;
+    for (const o of drops) sig += `|D${o.position.x.toFixed(3)},${o.position.z.toFixed(3)}`;
+    for (const z of zones) {
+        sig += `|Z${z.position.x.toFixed(3)},${z.position.z.toFixed(3)}:${z.userData.points.length}`;
+    }
+    return sig;
 }
 
 function pointInPolygonXZ(px, pz, polygon) {
@@ -107,8 +119,6 @@ function buildArcLineObject(craneCenter, pick, drop) {
 }
 
 export function updateSwingCheck() {
-    clearSwingVisuals();
-
     const el = document.getElementById('safety-swing');
 
     const crane = state.placedObjects.find(o => o.userData.type === 'crane');
@@ -119,11 +129,19 @@ export function updateSwingCheck() {
     );
 
     if (!crane || picks.length === 0 || drops.length === 0) {
+        if (_swingVisuals.length > 0) clearSwingVisuals();
         if (el) el.innerHTML = '<span class="pill ok">- なし</span>';
         return;
     }
 
     const craneCenter = getCraneCenter(crane);
+
+    const signature = computeSignature(craneCenter, picks, drops, forbiddenZones);
+    if (signature === _lastSignature) return;
+
+    clearSwingVisuals();
+    _lastSignature = signature;
+
     const results = [];
 
     picks.forEach((pick, pi) => {
