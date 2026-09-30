@@ -1319,6 +1319,9 @@ function autoSave() {
   clearTimeout(saveTimer);
   setSaveStatus('保存中…', false);
   saveTimer = setTimeout(() => {
+    // 発火済みのタイマー ID を残すと beforeunload が「未保存あり」と誤判定し、
+    // 外部（プロジェクト取込）で書き込まれた内容を毎回古い画面状態で上書きしてしまう
+    saveTimer = null;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(getCurrentState()));
       const now = new Date();
@@ -1332,6 +1335,32 @@ function autoSave() {
   }, 600);
 }
 
+// 保存データはプロジェクト JSON の取込で他人のファイルから入ってくることがあるので、
+// innerHTML に戻す前にスクリプト実行につながる要素・属性を落とす。
+// （このページは親と同一オリジンなので、ここで実行されると親の localStorage まで触れる）
+const BLOCKED_TAGS = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'STYLE', 'BASE', 'FORM']);
+function sanitizeHtml(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = String(html);
+  const walk = (node) => {
+    [...node.children].forEach(child => {
+      if (BLOCKED_TAGS.has(child.tagName)) { child.remove(); return; }
+      [...child.attributes].forEach(attr => {
+        const name = attr.name.toLowerCase();
+        const value = attr.value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase();
+        if (name.startsWith('on') ||
+            ((name === 'href' || name === 'src' || name === 'xlink:href' || name === 'action') &&
+             (value.startsWith('javascript:') || value.startsWith('vbscript:') || value.startsWith('data:text/html')))) {
+          child.removeAttribute(attr.name);
+        }
+      });
+      walk(child);
+    });
+  };
+  walk(tpl.content);
+  return tpl.innerHTML;
+}
+
 function loadSaved() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1339,7 +1368,7 @@ function loadSaved() {
     const state = JSON.parse(raw);
     document.querySelectorAll('.editable').forEach(el => {
       const v = state.fields?.[el.dataset.field];
-      if (v !== undefined) el.innerHTML = v;
+      if (v !== undefined) el.innerHTML = sanitizeHtml(v);
     });
     document.querySelectorAll('.checkbox.checkable').forEach(el => {
       const v = state.checkboxes?.[el.dataset.key];
@@ -1347,7 +1376,7 @@ function loadSaved() {
     });
     document.querySelectorAll('.image-box img[data-img-key]').forEach(el => {
       const v = state.images?.[el.dataset.imgKey];
-      if (v) {
+      if (typeof v === 'string' && v.startsWith('data:image/')) {
         el.src = v;
         el.closest('.image-box').classList.add('has-img');
       }
@@ -1473,6 +1502,15 @@ window.addEventListener('load', () => {
   const hasSaved = loadSaved();
   setSaveStatus(hasSaved ? '前回の編集を復元' : '自動保存済み', true);
   fitPageToViewport();
+});
+
+// 親（index.html）でプロジェクトを取り込んだとき、開いたままの計画書を読み直す
+window.addEventListener('message', (e) => {
+  if (e.source !== window.parent || !e.data || e.data.type !== 'crane-plan-reload') return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const hasSaved = loadSaved();
+  setSaveStatus(hasSaved ? '取込データを反映' : '自動保存済み', true);
 });
 
 window.addEventListener('beforeunload', () => {

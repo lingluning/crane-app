@@ -1,0 +1,12 @@
+{
+  "name": "crane-app",
+  "private": true,
+  "description": "移動式クレーン作業計画 3D ツール（ブラウザで直接動作。package.json はテスト用のみ）",
+  "scripts": {
+    "test": "node test/smoke.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.0.0",
+    "three": "0.160.0"
+  }
+}

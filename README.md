@@ -115,6 +115,20 @@ Then open:
 - [Open-Meteo](https://open-meteo.com/) — weather forecast API (no key required)
 - Vanilla ES modules — no bundler
 
+## 🧪 Tests
+
+The app itself needs no build step. `package.json` exists only for the browser smoke test:
+
+```bash
+npm install
+npm test
+```
+
+`test/smoke.mjs` serves the repo, opens it in headless Chrome (three.js is served from
+`node_modules`, other CDNs are stubbed, so it runs offline) and walks through placing
+objects, undo/redo, 方案 tabs, project export/import, the safety panel checks and resize.
+It exits non-zero on any failed check or uncaught page error.
+
 ## 🚧 Status
 
 Active development. Recent milestones:

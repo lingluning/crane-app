@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { scene } from './scene.js';
 import { state } from './state.js';
 import { getCraneCenter } from './tools.js';
+import { pointInPolygonXZ, shortArcAngles } from './geometry.js';
 
 const N_ARC = 36;
 const N_RADII = 6;
@@ -32,25 +33,6 @@ function computeSignature(craneCenter, picks, drops, zones) {
         sig += `|Z${z.position.x.toFixed(3)},${z.position.z.toFixed(3)}:${z.userData.points.length}`;
     }
     return sig;
-}
-
-function pointInPolygonXZ(px, pz, polygon) {
-    let inside = false;
-    const n = polygon.length;
-    for (let i = 0, j = n - 1; i < n; j = i++) {
-        const xi = polygon[i].x, zi = polygon[i].z;
-        const xj = polygon[j].x, zj = polygon[j].z;
-        const intersect = ((zi > pz) !== (zj > pz)) &&
-            (px < (xj - xi) * (pz - zi) / (zj - zi) + xi);
-        if (intersect) inside = !inside;
-    }
-    return inside;
-}
-
-function shortArcAngles(a1, a2) {
-    let diff = ((a2 - a1) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
-    if (diff > Math.PI) diff -= Math.PI * 2;
-    return { start: a1, delta: diff };
 }
 
 function computeSwingArcPoints(craneCenter, pick, drop) {

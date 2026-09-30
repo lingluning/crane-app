@@ -13,7 +13,7 @@ import {
     ungroupSelection, setSelection, findRootObject
 } from './tools.js';
 
-import { serialize, deserialize, startAutoSave } from './persistence.js';
+import { serialize, deserialize, startAutoSave, safeSetItem } from './persistence.js';
 
 import { state } from './state.js';
 
@@ -561,10 +561,8 @@ document.querySelectorAll('.plate-size-btn').forEach(btn => {
 // ============= 保存 / 加载 =============
 document.getElementById('save-btn').addEventListener('click', () => {
     const data = serialize();
-    localStorage.setItem('crane_plan', JSON.stringify(data));
-    
+    if (!safeSetItem('crane_plan', JSON.stringify(data))) return;
     showToast(`保存しました（${data.objects.length} 個のオブジェクト）`, 'success');
-    console.log('保存的数据:', data);
 });
 
 document.getElementById('load-btn').addEventListener('click', () => {
@@ -618,7 +616,16 @@ document.getElementById('screenshot-btn').addEventListener('click', async () => 
 
     // iframe 内から閉じたい場合：parent に postMessage を送れば閉じる
     window.addEventListener('message', (e) => {
+        if (e.source !== frame.contentWindow) return;
         if (e.data && e.data.type === 'crane-plan-close') closePlan();
+    });
+
+    // プロジェクト取込で計画書データが差し替わったら、読込済みの iframe に反映させる
+    //（未読込なら次に開いたときに localStorage から読まれるので何もしない）
+    window.addEventListener('crane-plan-state-imported', () => {
+        if (frame.getAttribute('src') && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type: 'crane-plan-reload' }, location.origin);
+        }
     });
 
     // Esc キーで閉じる（他のショートカットを潰さないよう、オーバーレイ表示中だけ）
@@ -640,6 +647,7 @@ document.getElementById('import-json-btn').addEventListener('click', () => {
 document.getElementById('import-file').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) importProjectJSON(file);
+    e.target.value = '';   // 同じファイルを続けて取り込んでも change が発火するように
 });
 
 
@@ -747,11 +755,9 @@ function syncRadiusSliderUpperBound() {
         slider.max = maxR;
         const crane = state.placedObjects.find(o => o.userData.type === 'crane');
         if (crane && crane.userData.workRadius > maxR) {
-            import('./tools.js').then(({ updateCraneRadius }) => {
-                updateCraneRadius(crane, maxR);
-                slider.value = maxR;
-                document.getElementById('radius-value').textContent = maxR.toFixed(1);
-            });
+            updateCraneRadius(crane, maxR);
+            slider.value = maxR;
+            document.getElementById('radius-value').textContent = maxR.toFixed(1);
         }
     }
 }
@@ -856,7 +862,7 @@ function loadSettings() {
 }
 
 function saveSettings(s) {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    return safeSetItem(SETTINGS_KEY, JSON.stringify(s));
 }
 
 function openSettingsModal() {
@@ -893,7 +899,7 @@ document.getElementById('settings-save').addEventListener('click', () => {
         lng: Number.isFinite(lng) ? lng : null,
         notes:    document.getElementById('set-notes').value.trim()
     };
-    saveSettings(s);
+    if (!saveSettings(s)) return;
     showToast('設定を保存しました', 'success');
     closeSettingsModal();
     updateWeather();

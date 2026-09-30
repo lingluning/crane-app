@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { scene, models } from './scene.js';
 import { state } from './state.js';
-import { updateCounters, showToast } from './tools.js';
+import { updateCounters, showToast, getCraneCenter } from './tools.js';
+import {
+    pointInPolygonXZ, shortArcAngles, samplePolylineXZ, pointInAnnularSectorXZ
+} from './geometry.js';
 import { CSS2DObject } from './scene.js';
 
 
@@ -477,10 +480,101 @@ export function checkSafety() {
     });
 
     const radiusEl = document.getElementById('safety-radius');
-    if (!radiusEl) return;
-    if (anyDanger) {
-        radiusEl.innerHTML = '<span class="pill danger">⚠️ 禁止区と重複</span>';
-    } else {
-        radiusEl.innerHTML = '<span class="pill ok">✅ OK</span>';
+    if (radiusEl) {
+        radiusEl.innerHTML = anyDanger
+            ? '<span class="pill danger">⚠️ 禁止区と重複</span>'
+            : '<span class="pill ok">✅ OK</span>';
     }
+
+    const zonePolygons = forbiddens
+        .map(z => z.userData.points)
+        .filter(pts => Array.isArray(pts) && pts.length >= 3);
+
+    setSafetyRow('safety-load', checkLoadPositions(cranes[0], zonePolygons));
+    setSafetyRow('safety-path', checkPathOverlap(cranes[0], zonePolygons));
+}
+
+// ---- 以下 2 項目は以前から表示枠だけあり、常に「- なし」（＝問題なしに見える）のままだった ----
+
+function setSafetyRow(id, result) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const html = `<span class="pill ${result.level}">${result.text}</span>`;
+    if (el.innerHTML !== html) el.innerHTML = html;   // 500ms ごとに呼ばれるので不要な再描画を避ける
+}
+
+// 吊荷位置：起吊・卸荷点が禁止区の中にないか、設定した作業半径の外にないか
+function checkLoadPositions(crane, zonePolygons) {
+    const loads = state.placedObjects.filter(
+        o => o.userData.type === 'loadPick' || o.userData.type === 'loadDrop'
+    );
+    if (loads.length === 0) return { level: 'ok', text: '- なし' };
+
+    const label = o => (o.userData.type === 'loadPick' ? '起吊' : '卸荷') +
+        '#' + (state.placedObjects.filter(x => x.userData.type === o.userData.type).indexOf(o) + 1);
+
+    const inZone = loads.filter(o =>
+        zonePolygons.some(poly => pointInPolygonXZ(o.position.x, o.position.z, poly)));
+    if (inZone.length > 0) {
+        return { level: 'danger', text: `🚨 禁止区内 ${inZone.map(label).join(' ')}` };
+    }
+
+    if (crane) {
+        const c = getCraneCenter(crane);
+        const R = crane.userData.workRadius || 10;
+        const outside = loads.filter(o => Math.hypot(o.position.x - c.x, o.position.z - c.z) > R);
+        if (outside.length > 0) {
+            return { level: 'warn', text: `⚠️ 作業半径外 ${outside.map(label).join(' ')}` };
+        }
+    }
+    return { level: 'ok', text: `✅ OK（${loads.length} 点）` };
+}
+
+// 吊荷が旋回で通過する扇環（起吊→卸荷の短い方の弧）。吊荷寸法ぶんの余裕を持たせる。
+const LOAD_SWING_MARGIN = 1.0;   // m
+
+// 通路重複：通路が禁止区を横切っていないか／吊荷の旋回範囲の下を通っていないか
+// （クレーン則 第74条の2：吊り荷の下への立入禁止）
+function checkPathOverlap(crane, zonePolygons) {
+    const paths = state.placedObjects.filter(
+        o => o.userData.type === 'path' && Array.isArray(o.userData.points) && o.userData.points.length >= 2
+    );
+    if (paths.length === 0) return { level: 'ok', text: '- なし' };
+
+    const sectors = [];
+    if (crane) {
+        const c = getCraneCenter(crane);
+        const picks = state.placedObjects.filter(o => o.userData.type === 'loadPick');
+        const drops = state.placedObjects.filter(o => o.userData.type === 'loadDrop');
+        picks.forEach(p => drops.forEach(d => {
+            const r1 = Math.hypot(p.position.x - c.x, p.position.z - c.z);
+            const r2 = Math.hypot(d.position.x - c.x, d.position.z - c.z);
+            const { start, delta } = shortArcAngles(
+                Math.atan2(p.position.z - c.z, p.position.x - c.x),
+                Math.atan2(d.position.z - c.z, d.position.x - c.x)
+            );
+            sectors.push({
+                c, start, delta,
+                rMin: Math.max(0, Math.min(r1, r2) - LOAD_SWING_MARGIN),
+                rMax: Math.max(r1, r2) + LOAD_SWING_MARGIN
+            });
+        }));
+    }
+
+    let underSwing = 0, crossesZone = 0;
+    paths.forEach(path => {
+        const samples = samplePolylineXZ(path.userData.points, 0.25);
+        if (sectors.length > 0 && samples.some(s => sectors.some(sec =>
+                pointInAnnularSectorXZ(s, sec.c, sec.rMin, sec.rMax, sec.start, sec.delta)))) {
+            underSwing++;
+        }
+        if (zonePolygons.length > 0 && samples.some(s =>
+                zonePolygons.some(poly => pointInPolygonXZ(s.x, s.z, poly)))) {
+            crossesZone++;
+        }
+    });
+
+    if (underSwing > 0) return { level: 'danger', text: `🚨 吊荷旋回範囲を通過（${underSwing} 本）` };
+    if (crossesZone > 0) return { level: 'warn', text: `⚠️ 禁止区を横断（${crossesZone} 本）` };
+    return { level: 'ok', text: `✅ OK（${paths.length} 本）` };
 }

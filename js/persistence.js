@@ -164,6 +164,34 @@ export function deserialize(data) {
     window.dispatchEvent(new CustomEvent('crane-state-loaded'));
 }
 
+// ============= localStorage 安全書込 =============
+// 3 方案 + 名前付きシーン + 自動保存 + 計画書画像で 5MB 前後の上限に届きうる。
+// setItem は上限超過で例外を投げるので、素のまま呼ぶと自動保存タイマーの中で
+// 未捕捉例外になり、以後の保存が止まったことにユーザーが気付けない。
+// 同じ失敗を 30 秒ごとに通知しないよう、成功するまでトーストは 1 回だけ出す。
+let _storageFailureNotified = false;
+
+export function safeSetItem(key, value) {
+    try {
+        localStorage.setItem(key, value);
+        _storageFailureNotified = false;
+        return true;
+    } catch (err) {
+        console.error(`[storage] ${key} を保存できません`, err);
+        if (!_storageFailureNotified) {
+            _storageFailureNotified = true;
+            const full = err && (err.name === 'QuotaExceededError' || err.code === 22);
+            showToast(
+                full
+                    ? '保存容量が不足しています。場面管理で不要なシーンを削除してください'
+                    : 'ブラウザに保存できませんでした',
+                'error', 6000
+            );
+        }
+        return false;
+    }
+}
+
 // ============= 自动保存 =============
 // onSave receives the already-serialized payload so callers (e.g. the scenario
 // tab store) can persist it without running serialize() a second time.
@@ -173,7 +201,7 @@ export function startAutoSave(intervalMs = 30000, onSave = null) {
     _autoSaveTimer = setInterval(() => {
         if (state.placedObjects.length === 0) return;
         const data = serialize();
-        localStorage.setItem('crane_plan_auto', JSON.stringify(data));
+        safeSetItem('crane_plan_auto', JSON.stringify(data));
         if (onSave) onSave(data);
     }, intervalMs);
 }
