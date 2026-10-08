@@ -1,2 +1,11 @@
+# Node（テスト用）
 node_modules/
 test/.tmp-*/
+
+# OS メタデータ
+.DS_Store
+Thumbs.db
+
+# Python（python/craneModleCreater.py）
+__pycache__/
+*.pyc
