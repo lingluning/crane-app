@@ -40,6 +40,7 @@ import { updateBoomVisuals } from './boom-visual.js';
 import { updateSwingCheck } from './swing-check.js';
 import { updateGroundPressure } from './ground-pressure.js';
 import { initBuildMenu } from './build-menu.js';
+import { initSceneTree } from './scene-tree.js';
 import {
     openPlanView, closePlanView, downloadPlanSVG, downloadPlanPNG, insertPlanIntoReport
 } from './plan-view.js';
@@ -129,8 +130,17 @@ window.addEventListener('click', (event) => {
         case 'measure': addMeasurePoint(point); break;
         case 'equipment': placeEquipment(point, state.currentEquipmentId, state.placementRotation); break;
     }
-    if (state.placedObjects.length > beforeCount) snapshot();
+    if (state.placedObjects.length > beforeCount) {
+        snapshot();
+        notifyPlaced();
+    }
 });
+
+// 左のレイヤー一覧へ「ユーザーが今置いた」ことを知らせる（読込・撤銷とは区別する）
+function notifyPlaced() {
+    const last = state.placedObjects[state.placedObjects.length - 1];
+    if (last) window.dispatchEvent(new CustomEvent('object-placed', { detail: { type: last.userData.type } }));
+}
 
 // ============= 移動平滑（拖拽 / 平移共用） =============
 // 指数衰减：alpha = 1 - exp(-stiffness * dt)。stiffness 越大跟手越紧。
@@ -493,10 +503,12 @@ window.addEventListener('keydown', (event) => {
         if (state.currentTool === 'forbidden' && state.drawingPoints.length >= 3) {
             finishForbiddenZone();
             snapshot();
+            notifyPlaced();
         }
         if (state.currentTool === 'path' && state.drawingPoints.length >= 2) {
             finishPath();
             snapshot();
+            notifyPlaced();
         }
         return;
     }
@@ -1123,6 +1135,7 @@ loadModels(() => {
 });
 
 initBuildMenu();
+initSceneTree();
 selectTool('crane');
 startAnimationLoop();
 // 自動保存と作業タブへの保存は同じ serialize() 結果を使い回す

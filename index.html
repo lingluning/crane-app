@@ -318,6 +318,33 @@
         .toggle-row.on .toggle-box svg { color: white; }
         .toggle-row .toggle-box svg { color: transparent; }
 
+        /* ---- レイヤー一覧（js/scene-tree.js） ---- */
+        .layer-caret { width: 8px; color: var(--text-faint); font-size: 9px; transition: transform .12s; }
+        .layer-caret.open { transform: rotate(90deg); }
+        .layer-name { flex: 1; min-width: 0; }
+        .layer-row .layer-count { margin-left: 0; }
+        .layer-row.is-empty { cursor: default; }
+        .layer-row.is-empty .layer-name { color: var(--text-dim); }
+        .layer-row.is-hidden .layer-name, .layer-row.is-hidden .layer-swatch, .layer-row.is-hidden > .ic { opacity: 0.4; }
+        .layer-eye { width: 20px; height: 20px; display: grid; place-items: center; padding: 0;
+            border: none; border-radius: 3px; background: transparent; color: var(--text-faint); cursor: pointer; }
+        .layer-eye:hover { background: var(--accent-dim); color: var(--accent); }
+        .layer-row.is-hidden .layer-eye { color: var(--danger); }
+        .obj-list { padding: 2px 0 4px; border-left: 1px solid var(--border); margin-left: 17px; }
+        .obj-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px;
+            font-size: 11.5px; cursor: pointer; color: var(--text); }
+        .obj-row:hover { background: var(--surface-alt); }
+        .obj-row.selected { background: var(--accent-dim); color: var(--accent); }
+        .obj-row.muted { opacity: 0.45; }
+        .obj-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .obj-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-faint); }
+        .obj-row.selected .obj-meta { color: var(--accent); }
+        .obj-del { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; visibility: hidden;
+            border: none; border-radius: 3px; background: transparent; color: var(--text-faint); cursor: pointer; }
+        .obj-row:hover .obj-del { visibility: visible; }
+        .obj-del:hover { background: var(--pill-danger-bg); color: var(--danger); }
+        #layer-aux.has-hidden { color: var(--danger); cursor: pointer; }
+
         /* ============================================================
            Right column panels
            ============================================================ */
@@ -683,6 +710,8 @@
             <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
             <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l10 17H2L12 4z"/><path d="M12 11v4"/><circle cx="12" cy="18" r="0.6" fill="currentColor"/></symbol>
             <symbol id="i-planview" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="10" cy="11" r="4.5" stroke-dasharray="2 2"/><rect x="8.5" y="9.5" width="3" height="3"/><path d="M15.5 16.5h2.5M3 18h18"/></symbol>
+            <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+            <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0112 5.5C18.4 5.5 22 12 22 12a17 17 0 01-3.1 3.9M6.4 6.9C3.7 8.6 2 12 2 12s3.6 6.5 10 6.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/></symbol>
             <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></symbol>
         </defs>
     </svg>
@@ -764,50 +793,10 @@
     <aside class="left-rail">
         <div class="rail-head">
             <span>レイヤー</span>
-            <span class="rail-head-aux">7 / 7</span>
+            <span class="rail-head-aux" id="layer-aux"></span>
         </div>
-        <div class="layer-row" data-layer="crane">
-            <svg class="ic" width="13" height="13"><use href="#i-crane"/></svg>
-            <div class="layer-swatch" style="background:#fbbf24"></div>
-            <span>クレーン</span>
-            <span class="layer-count" id="count-crane">0</span>
-        </div>
-        <div class="layer-row" data-layer="loadPick">
-            <svg class="ic" width="13" height="13"><use href="#i-pickup"/></svg>
-            <div class="layer-swatch" style="background:#16a34a"></div>
-            <span>起吊位置</span>
-            <span class="layer-count" id="count-loadPick">0</span>
-        </div>
-        <div class="layer-row" data-layer="loadDrop">
-            <svg class="ic" width="13" height="13"><use href="#i-drop"/></svg>
-            <div class="layer-swatch" style="background:#dc2626"></div>
-            <span>卸荷位置</span>
-            <span class="layer-count" id="count-loadDrop">0</span>
-        </div>
-        <div class="layer-row" data-layer="plate">
-            <svg class="ic" width="13" height="13"><use href="#i-plate"/></svg>
-            <div class="layer-swatch" style="background:#e7c14b"></div>
-            <span>敷鉄板</span>
-            <span class="layer-count" id="count-plate">0</span>
-        </div>
-        <div class="layer-row" data-layer="forbidden">
-            <svg class="ic" width="13" height="13"><use href="#i-forbidden"/></svg>
-            <div class="layer-swatch" style="background:#dc2626"></div>
-            <span>禁止区</span>
-            <span class="layer-count" id="count-forbidden">0</span>
-        </div>
-        <div class="layer-row" data-layer="path">
-            <svg class="ic" width="13" height="13"><use href="#i-path"/></svg>
-            <div class="layer-swatch" style="background:#16a34a"></div>
-            <span>通路</span>
-            <span class="layer-count" id="count-path">0</span>
-        </div>
-        <div class="layer-row" data-layer="equipment">
-            <svg class="ic" width="13" height="13"><use href="#i-crane"/></svg>
-            <div class="layer-swatch" style="background:#94a3b8"></div>
-            <span>重機・車両</span>
-            <span class="layer-count" id="count-equipment">0</span>
-        </div>
+        <!-- js/scene-tree.js が描画：表示切替・オブジェクト一覧・選択・削除 -->
+        <div id="layer-list"></div>
 
         <div class="rail-head" style="margin-top:8px"><span>機材</span></div>
         <div style="padding:8px 12px 14px">
@@ -816,8 +805,8 @@
                 <select id="crane-model-select"></select>
             </div>
             <div class="field" style="margin-bottom:0">
-                <label>表示中の半径</label>
-                <div class="panel-val" id="info-count" style="font-size:18px;font-weight:600">0 台</div>
+                <label>作業半径（配置中のクレーン）</label>
+                <div class="panel-val" id="rail-crane-radius" style="font-size:18px;font-weight:600"></div>
             </div>
         </div>
     </aside>
@@ -1336,7 +1325,7 @@ Full license text: https://openfontlicense.org</pre>
 
 
     <!-- ============================================================
-         Inline glue: theme toggle, status-bar count mirroring, layer-row → tool
+         Inline glue: theme toggle, OSS license modal
          ============================================================ -->
     <script>
         // テーマ切替（light <-> dark） + localStorage 永続化
@@ -1356,36 +1345,6 @@ Full license text: https://openfontlicense.org</pre>
                 apply(next);
             });
         })();
-
-        // レイヤー行クリック → 対応するツールに切替（main.js の data-tool ボタンへ委譲）
-        document.querySelectorAll('.layer-row').forEach(row => {
-            row.addEventListener('click', () => {
-                const layer = row.dataset.layer;
-                const target = document.querySelector(`.tool-btn[data-tool="${layer}"]`);
-                if (target) target.click();
-            });
-        });
-
-        // tools.js は count-${type} ID 1 個しか更新しないので、
-        // 左ペインとステータスバーの両方を反映するための MutationObserver。
-        ['crane','loadPick','loadDrop','plate','forbidden','path','equipment'].forEach(type => {
-            const src = document.getElementById(`count-${type}`);
-            const dst = document.getElementById(`count-${type}-status`);
-            if (!src || !dst) return;
-            new MutationObserver(() => { dst.textContent = src.textContent; })
-                .observe(src, { childList: true, characterData: true, subtree: true });
-        });
-
-        // 工具按钮のアクティブ状態を、対応するレイヤー行にも反映
-        const _origActiveSync = () => {
-            document.querySelectorAll('.tool-btn').forEach(b => {
-                const layer = document.querySelector(`.layer-row[data-layer="${b.dataset.tool}"]`);
-                if (layer) layer.classList.toggle('active', b.classList.contains('active'));
-            });
-        };
-        new MutationObserver(_origActiveSync)
-            .observe(document.querySelector('.ribbon'),
-                { attributes: true, subtree: true, attributeFilter: ['class'] });
 
         // OSS ライセンスモーダル：About 内の「📜 オープンソースライセンス一覧」リンクから開く
         (function () {

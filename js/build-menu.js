@@ -158,13 +158,6 @@ export function initBuildMenu() {
         selectTool('select');
     });
 
-    // 左のレイヤー一覧「重機・車両」から開けるように
-    document.querySelector('.layer-row[data-layer="equipment"]')?.addEventListener('click', () => {
-        setCollapsed(false);
-        setTab('heavy');
-        root.scrollIntoView({ block: 'nearest' });
-    });
-
     window.addEventListener('tool-changed', refreshState);
     window.addEventListener('placed-objects-changed', refreshState);
 }

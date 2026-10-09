@@ -42,7 +42,7 @@ function disposeObject3D(obj) {
 
 // ============= 完整移除一个 placedObject =============
 function removeCSSLabel(lbl, parent) {
-    if (!lbl) return;
+    if (!lbl || !lbl.isObject3D) return;   // 起吊・卸荷の userData.label は文字列
     if (parent && parent.children.includes(lbl)) parent.remove(lbl);
     else scene.remove(lbl);
     if (lbl.element && lbl.element.parentNode) lbl.element.parentNode.removeChild(lbl.element);
@@ -493,6 +493,7 @@ export function setSelection(objects, primary = null) {
 
     showInfo(state.selectedObject);
     updateCraneControlPanel();
+    window.dispatchEvent(new CustomEvent('selection-changed'));
 }
 
 function updateCraneControlPanel() {
