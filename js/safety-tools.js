@@ -3,7 +3,8 @@ import { scene, models } from './scene.js';
 import { state } from './state.js';
 import { updateCounters, showToast, getCraneCenter } from './tools.js';
 import {
-    pointInPolygonXZ, shortArcAngles, samplePolylineXZ, pointInAnnularSectorXZ
+    pointInPolygonXZ, shortArcAngles, samplePolylineXZ, pointInAnnularSectorXZ,
+    circleIntersectsPolygonXZ
 } from './geometry.js';
 import { CSS2DObject } from './scene.js';
 
@@ -459,12 +460,13 @@ export function checkSafety() {
 
     cranes.forEach(crane => {
         if (!crane.userData.radiusCircle) return;
-        const radiusBox = new THREE.Box3().setFromObject(crane.userData.radiusCircle);
-        let craneDanger = false;
-
-        forbiddens.forEach(zone => {
-            const zoneBox = new THREE.Box3().setFromObject(zone);
-            if (radiusBox.intersectsBox(zoneBox)) craneDanger = true;
+        // 以前は円と禁止区の外接矩形（AABB）同士で判定していたため、円の外接正方形の角が
+        // 禁止区の外接矩形に掛かるだけで「重複」になっていた。実際の円と多角形で判定する。
+        const c = getCraneCenter(crane);
+        const R = crane.userData.workRadius || 10;
+        const craneDanger = forbiddens.some(zone => {
+            const pts = zone.userData.points;
+            return Array.isArray(pts) && pts.length >= 3 && circleIntersectsPolygonXZ(c, R, pts);
         });
 
         if (craneDanger) {
@@ -533,6 +535,29 @@ function checkLoadPositions(crane, zonePolygons) {
 // 吊荷が旋回で通過する扇環（起吊→卸荷の短い方の弧）。吊荷寸法ぶんの余裕を持たせる。
 const LOAD_SWING_MARGIN = 1.0;   // m
 
+// 起吊点 × 卸荷点の全組合せについて旋回扇環を返す（通路重複チェックと平面図で共用）
+export function computeSwingSectors(crane) {
+    const sectors = [];
+    if (!crane) return sectors;
+    const c = getCraneCenter(crane);
+    const picks = state.placedObjects.filter(o => o.userData.type === 'loadPick');
+    const drops = state.placedObjects.filter(o => o.userData.type === 'loadDrop');
+    picks.forEach(p => drops.forEach(d => {
+        const r1 = Math.hypot(p.position.x - c.x, p.position.z - c.z);
+        const r2 = Math.hypot(d.position.x - c.x, d.position.z - c.z);
+        const { start, delta } = shortArcAngles(
+            Math.atan2(p.position.z - c.z, p.position.x - c.x),
+            Math.atan2(d.position.z - c.z, d.position.x - c.x)
+        );
+        sectors.push({
+            c, start, delta, rPick: r1, rDrop: r2,
+            rMin: Math.max(0, Math.min(r1, r2) - LOAD_SWING_MARGIN),
+            rMax: Math.max(r1, r2) + LOAD_SWING_MARGIN
+        });
+    }));
+    return sectors;
+}
+
 // 通路重複：通路が禁止区を横切っていないか／吊荷の旋回範囲の下を通っていないか
 // （クレーン則 第74条の2：吊り荷の下への立入禁止）
 function checkPathOverlap(crane, zonePolygons) {
@@ -541,25 +566,7 @@ function checkPathOverlap(crane, zonePolygons) {
     );
     if (paths.length === 0) return { level: 'ok', text: '- なし' };
 
-    const sectors = [];
-    if (crane) {
-        const c = getCraneCenter(crane);
-        const picks = state.placedObjects.filter(o => o.userData.type === 'loadPick');
-        const drops = state.placedObjects.filter(o => o.userData.type === 'loadDrop');
-        picks.forEach(p => drops.forEach(d => {
-            const r1 = Math.hypot(p.position.x - c.x, p.position.z - c.z);
-            const r2 = Math.hypot(d.position.x - c.x, d.position.z - c.z);
-            const { start, delta } = shortArcAngles(
-                Math.atan2(p.position.z - c.z, p.position.x - c.x),
-                Math.atan2(d.position.z - c.z, d.position.x - c.x)
-            );
-            sectors.push({
-                c, start, delta,
-                rMin: Math.max(0, Math.min(r1, r2) - LOAD_SWING_MARGIN),
-                rMax: Math.max(r1, r2) + LOAD_SWING_MARGIN
-            });
-        }));
-    }
+    const sectors = computeSwingSectors(crane);
 
     let underSwing = 0, crossesZone = 0;
     paths.forEach(path => {

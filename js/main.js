@@ -39,6 +39,9 @@ import {
 import { updateBoomVisuals } from './boom-visual.js';
 import { updateSwingCheck } from './swing-check.js';
 import { updateGroundPressure } from './ground-pressure.js';
+import {
+    openPlanView, closePlanView, downloadPlanSVG, downloadPlanPNG, insertPlanIntoReport
+} from './plan-view.js';
 
 
 
@@ -587,6 +590,22 @@ document.getElementById('load-btn').addEventListener('click', () => {
 document.getElementById('screenshot-btn').addEventListener('click', async () => {
     await downloadThreeViews();
 });
+
+// ============= 2D 平面図（俯瞰） =============
+document.getElementById('plan-view-btn').addEventListener('click', openPlanView);
+document.getElementById('plan-view-close').addEventListener('click', closePlanView);
+document.getElementById('plan-view-svg').addEventListener('click', downloadPlanSVG);
+document.getElementById('plan-view-png').addEventListener('click', downloadPlanPNG);
+document.getElementById('plan-view-insert').addEventListener('click', insertPlanIntoReport);
+document.getElementById('plan-view-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'plan-view-modal') closePlanView();
+});
+// 表示中は Esc で閉じ、背後の 3D 操作（Delete での削除など）にキーを渡さない
+window.addEventListener('keydown', (e) => {
+    if (document.getElementById('plan-view-modal').classList.contains('hidden')) return;
+    if (e.key === 'Escape') closePlanView();
+    e.stopPropagation();
+}, true);
 
 // ============= 計画書（CF-19 · A3）を埋め込みオーバーレイで開く =============
 //   index 内の #plan-overlay 内の iframe に crane-plan-a3.html を遅延ロードして表示。

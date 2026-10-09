@@ -227,6 +227,58 @@ try {
     check('吊荷位置：作業半径外を検出', (await text('#safety-load')).includes('作業半径外'), await text('#safety-load'));
     check('通路重複：離れた通路は OK', (await text('#safety-path')).includes('OK'), await text('#safety-path'));
 
+    console.log('作業半径 × 禁止区');
+    // 円の外接正方形の角にだけ掛かる禁止区（円 R=6.5 とは実際には離れている）
+    const nearCorner = [at(5.5, 5.5), at(8, 5.5), at(8, 8), at(5.5, 8)];
+    await importProject({ version: '2.0', scene: { version: '1.1', objects: [
+        craneItem, { type: 'forbidden', position: at(0, 0), rotation: 0, points: nearCorner },
+    ] } });
+    await wait(1200);
+    check('外接矩形だけ重なる禁止区は誤検出しない', (await text('#safety-radius')).includes('OK'), await text('#safety-radius'));
+    await importProject({ version: '2.0', scene: { version: '1.1', objects: [
+        craneItem, { type: 'forbidden', position: at(0, 0), rotation: 0, points: [at(4, -1), at(9, -1), at(9, 1), at(4, 1)] },
+    ] } });
+    await wait(1200);
+    check('円に掛かる禁止区は重複と判定', (await text('#safety-radius')).includes('重複'), await text('#safety-radius'));
+
+    console.log('平面図');
+    await importProject({ version: '2.0', scene: { version: '1.1', objects: [
+        craneItem,
+        { type: 'plate', position: at(3.3, 3.3), rotation: 0, size: { x: 1.5, z: 3 } },
+        { type: 'loadPick', position: at(5, 0), rotation: 0 },
+        { type: 'loadDrop', position: at(0, 5), rotation: 0 },
+        { type: 'forbidden', position: at(0, 0), rotation: 0, points: nearCorner },
+        { type: 'path', position: at(0, 0), rotation: 0, points: [at(-8, -8), at(-8, 8)] },
+    ] } });
+    await wait(1200);
+    await noNewErrors('平面図を開いても例外なし', async () => { await click('#plan-view-btn'); await wait(600); });
+    const pv = await page.evaluate(() => {
+        const q = s => document.querySelectorAll('#plan-view-canvas ' + s).length;
+        return {
+            open: !document.getElementById('plan-view-modal').classList.contains('hidden'),
+            svg: q('svg'), raster: q('image') + q('foreignObject'),
+            crane: q('[data-kind=crane-body]'), outriggers: q('[data-kind=outrigger]'),
+            onPlate: q('[data-kind=outrigger][data-on-plate=true]'),
+            pick: q('[data-kind=load-pick]'), drop: q('[data-kind=load-drop]'),
+            forbidden: q('[data-kind=forbidden]'), path: q('[data-kind=path]'),
+            plate: q('[data-kind=plate]'), swing: q('[data-kind=swing]'),
+            scale: /縮尺 1:\d+/.test(document.getElementById('plan-view-canvas').textContent),
+        };
+    });
+    check('平面図が SVG で表示される', pv.open && pv.svg === 1, JSON.stringify(pv));
+    check('平面図に地形などのラスター画像を含まない', pv.raster === 0);
+    check('平面図に重機・吊荷・安全設備が揃う',
+        pv.crane === 1 && pv.outriggers === 4 && pv.pick === 1 && pv.drop === 1 &&
+        pv.forbidden === 1 && pv.path === 1 && pv.plate === 1 && pv.swing === 1, JSON.stringify(pv));
+    check('敷鉄板上のアウトリガだけが「敷鉄板上」で描かれる', pv.onPlate === 1, `onPlate=${pv.onPlate}`);
+    check('平面図に縮尺表記がある', pv.scale);
+    await click('#plan-view-insert'); await wait(800);
+    check('平面図を計画書に挿入できる', await page.evaluate(() =>
+        (JSON.parse(localStorage.getItem('crane_cf19_cadpro_v1') || '{}').images?.plan || '').startsWith('data:image/png')));
+    await page.keyboard.press('Escape'); await wait(300);
+    check('Esc で平面図を閉じ、背後のオブジェクトは残る',
+        await page.$eval('#plan-view-modal', el => el.classList.contains('hidden')) && await count('crane') === 1);
+
     console.log('リサイズ');
     await noNewErrors('ウィンドウリサイズで例外なし', async () => {
         await page.setViewport({ width: 1100, height: 700 }); await wait(500);
