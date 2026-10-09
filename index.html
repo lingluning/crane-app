@@ -574,6 +574,81 @@
         /* CSS2DRenderer container (label layer) — covers full window but transparent */
         body > div:not([id]):not([class]) { z-index: 5; }
 
+        /* ============================================================
+           建造メニュー（赤警サイドバー風）— js/build-menu.js
+           ゲームの HUD らしさを出すため、テーマに関係なく常にダークメタル調
+           ============================================================ */
+        @property --bm-p { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+        .build-menu {
+            background: linear-gradient(180deg, #2b323a, #1b2027);
+            border-bottom: 1px solid #05080a;
+            color: #e8e2c8; user-select: none;
+        }
+        .bm-head {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            background: linear-gradient(180deg, #4a5561, #2a3139);
+            border-bottom: 1px solid #0e1216;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
+            cursor: pointer;
+        }
+        .bm-title { font-weight: 800; font-size: 12.5px; letter-spacing: 0.18em;
+            color: #f5c542; text-shadow: 0 1px 0 #000; }
+        .bm-sub { font-family: 'JetBrains Mono', monospace; font-size: 9px;
+            letter-spacing: 0.22em; color: #8f9aa5; }
+        .bm-caret { margin-left: auto; color: #8f9aa5; font-size: 10px; transition: transform .15s; }
+        .build-menu.collapsed .bm-caret { transform: rotate(-90deg); }
+        .build-menu.collapsed .bm-body { display: none; }
+        .bm-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 7px 8px 0; }
+        .bm-tab {
+            height: 25px; padding: 0; cursor: pointer;
+            background: linear-gradient(180deg, #3a434d, #242a31);
+            border: 1px solid #0e1216; border-bottom: none;
+            color: #aab4be; font: 600 11px inherit; font-family: inherit;
+            clip-path: polygon(9% 0, 91% 0, 100% 100%, 0 100%);
+        }
+        .bm-tab:hover { color: #e8e2c8; }
+        .bm-tab.active { background: linear-gradient(180deg, #7a6620, #3b3212); color: #ffd85a; }
+        .bm-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px;
+            background: #0f1418; border-top: 2px solid #7a6620;
+        }
+        .cameo {
+            position: relative; aspect-ratio: 64 / 52; padding: 0; overflow: hidden; cursor: pointer;
+            background: radial-gradient(ellipse at 50% 38%, #34414e, #12181d 78%);
+            border: 1px solid #05080a; box-shadow: inset 0 0 0 1px #3c4652;
+            font-family: inherit;
+        }
+        .cameo svg { position: absolute; left: 4%; top: 6%; width: 92%; height: calc(94% - 16px); }
+        .cameo:hover { box-shadow: inset 0 0 0 1px #f5c542; }
+        .cameo-name {
+            position: absolute; left: 0; right: 0; bottom: 0; height: 16px; line-height: 16px;
+            padding: 0 4px; background: rgba(0,0,0,0.78); color: #e8e2c8;
+            font-size: 10.5px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .cameo-spec { position: absolute; left: 4px; top: 3px; z-index: 1;
+            font: 9.5px 'JetBrains Mono', monospace; color: #9fb0bf; text-shadow: 0 1px 0 #000; }
+        .cameo-count { position: absolute; right: 3px; top: 3px; z-index: 1; min-width: 16px; height: 15px;
+            padding: 0 3px; border-radius: 2px; background: #f5c542; color: #1a1a1a;
+            font: 700 10px/15px 'JetBrains Mono', monospace; text-align: center; }
+        .cameo.active { box-shadow: inset 0 0 0 2px #f5c542, 0 0 10px rgba(245,197,66,0.45); }
+        .cameo.active::after {
+            content: 'READY'; position: absolute; left: 0; right: 0; top: 36%; z-index: 2;
+            text-align: center; font: 800 12px 'JetBrains Mono', monospace; letter-spacing: 0.2em;
+            color: #7cfc7c; text-shadow: 0 0 4px #000, 0 1px 0 #000;
+        }
+        .cameo.disabled { filter: grayscale(1) brightness(0.5); cursor: not-allowed; }
+        .cameo.building::before {
+            content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+            background: conic-gradient(transparent var(--bm-p), rgba(0,0,0,0.7) 0);
+            animation: bm-wipe .4s linear forwards;
+        }
+        @keyframes bm-wipe { from { --bm-p: 0%; } to { --bm-p: 100%; } }
+        .bm-status {
+            padding: 5px 10px 7px; background: #0f1418; color: #8f9aa5;
+            font: 10.5px 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .bm-status.ready { color: #7cfc7c; }
+
         /* Tool icon SVGs */
         .ic { display: inline-block; vertical-align: middle; }
     </style>
@@ -701,7 +776,7 @@
     <aside class="left-rail">
         <div class="rail-head">
             <span>レイヤー</span>
-            <span class="rail-head-aux">6 / 6</span>
+            <span class="rail-head-aux">7 / 7</span>
         </div>
         <div class="layer-row" data-layer="crane">
             <svg class="ic" width="13" height="13"><use href="#i-crane"/></svg>
@@ -739,6 +814,12 @@
             <span>通路</span>
             <span class="layer-count" id="count-path">0</span>
         </div>
+        <div class="layer-row" data-layer="equipment">
+            <svg class="ic" width="13" height="13"><use href="#i-crane"/></svg>
+            <div class="layer-swatch" style="background:#94a3b8"></div>
+            <span>重機・車両</span>
+            <span class="layer-count" id="count-equipment">0</span>
+        </div>
 
         <div class="rail-head" style="margin-top:8px"><span>機材</span></div>
         <div style="padding:8px 12px 14px">
@@ -757,6 +838,20 @@
          Right column — inspector + weather + safety + load + crane
          ============================================================ -->
     <aside class="right-col">
+
+        <!-- 建造メニュー（赤警サイドバー風）— 中身は js/build-menu.js が描画 -->
+        <div class="build-menu" id="build-menu">
+            <div class="bm-head" title="クリックで開閉">
+                <span class="bm-title">建造</span>
+                <span class="bm-sub">CONSTRUCTION</span>
+                <span class="bm-caret">▼</span>
+            </div>
+            <div class="bm-body">
+                <div class="bm-tabs"></div>
+                <div class="bm-grid"></div>
+                <div class="bm-status">ユニットを選択してください</div>
+            </div>
+        </div>
 
         <!-- Selection inspector -->
         <div class="panel-card hidden" id="info-panel">
@@ -933,6 +1028,7 @@
             <div class="status-item" title="敷鉄板"><svg class="ic" width="11" height="11"><use href="#i-plate"/></svg><span style="color:var(--text)" id="count-plate-status">0</span></div>
             <div class="status-item" title="禁止区"><svg class="ic" width="11" height="11"><use href="#i-forbidden"/></svg><span style="color:var(--text)" id="count-forbidden-status">0</span></div>
             <div class="status-item" title="通路"><svg class="ic" width="11" height="11"><use href="#i-path"/></svg><span style="color:var(--text)" id="count-path-status">0</span></div>
+            <div class="status-item" title="重機・車両">🚜<span style="color:var(--text)" id="count-equipment-status">0</span></div>
         </div>
     </div>
 
@@ -1283,7 +1379,7 @@ Full license text: https://openfontlicense.org</pre>
 
         // tools.js は count-${type} ID 1 個しか更新しないので、
         // 左ペインとステータスバーの両方を反映するための MutationObserver。
-        ['crane','loadPick','loadDrop','plate','forbidden','path'].forEach(type => {
+        ['crane','loadPick','loadDrop','plate','forbidden','path','equipment'].forEach(type => {
             const src = document.getElementById(`count-${type}`);
             const dst = document.getElementById(`count-${type}-status`);
             if (!src || !dst) return;

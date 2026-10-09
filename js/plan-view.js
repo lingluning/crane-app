@@ -12,6 +12,7 @@ import { getCraneCenter, showToast } from './tools.js';
 import { outriggerPositions, plateUnder } from './ground-pressure.js';
 import { computeSwingSectors } from './safety-tools.js';
 import { safeSetItem } from './persistence.js';
+import { getEquipment } from './equipment-catalog.js';
 import { PLAN_STORAGE_KEY } from './export.js';
 
 // ---------- 用紙（A3 横、1 px = 420mm / 1188） ----------
@@ -29,7 +30,8 @@ const C = {
     pick: '#16a34a', drop: '#dc2626',
     forbidden: '#dc2626', path: '#16a34a',
     plate: '#e7c14b', plateInk: '#a07c10',
-    measure: '#7c3aed', ok: '#16a34a', bad: '#dc2626'
+    measure: '#7c3aed', ok: '#16a34a', bad: '#dc2626',
+    equip: '#94a3b8', equipHeavy: '#f2b705', equipInk: '#334155', hazard: '#d97706'
 };
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => (
@@ -92,7 +94,15 @@ function collect() {
         paths: of('path').filter(p => Array.isArray(p.userData.points) && p.userData.points.length >= 2),
         plates: of('plate'),
         measures: of('measure').filter(m => m.userData.from && m.userData.to),
+        equipment: of('equipment').map(o => ({ o, def: getEquipment(o.userData.equipmentId) })).filter(e => e.def),
     };
+}
+
+// 重機の占有矩形（模型の長手 = ローカル X）
+function equipmentCorners({ o, def }) {
+    const { length: L, width: Wd, offsetX = 0 } = def.footprint;
+    return [[-L / 2, -Wd / 2], [L / 2, -Wd / 2], [L / 2, Wd / 2], [-L / 2, Wd / 2]]
+        .map(([lx, lz]) => localToWorld(o.position.x, o.position.z, o.rotation.y, lx + offsetX, lz));
 }
 
 function plateCorners(p) {
@@ -121,6 +131,13 @@ function bounds(d) {
     d.paths.forEach(p => p.userData.points.forEach(q => add(q.x, q.z)));
     d.plates.forEach(p => plateCorners(p).forEach(q => add(q.x, q.z)));
     d.measures.forEach(m => { add(m.userData.from.x, m.userData.from.z); add(m.userData.to.x, m.userData.to.z); });
+    d.equipment.forEach(e => {
+        equipmentCorners(e).forEach(q => add(q.x, q.z));
+        if (e.def.hazard) {
+            const r = e.def.hazard.radius;
+            add(e.o.position.x - r, e.o.position.z - r); add(e.o.position.x + r, e.o.position.z + r);
+        }
+    });
     if (pts.length === 0) return null;
     const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
     const pad = 2;   // m
@@ -249,6 +266,35 @@ export function buildPlanSVG() {
     });
     push(`</g>`);
 
+    // 重機・車両（範囲リング → 車体 → 名称）
+    push(`<g data-layer="equipment">`);
+    d.equipment.forEach(e => {
+        const { o, def } = e;
+        if (def.hazard) {
+            push(`<circle data-kind="equipment-hazard" cx="${X(o.position.x)}" cy="${Y(o.position.z)}" r="${M(def.hazard.radius)}" fill="${C.hazard}" fill-opacity="0.05" stroke="${C.hazard}" stroke-width="1.1" stroke-dasharray="2 4"/>`);
+        }
+    });
+    d.equipment.forEach(e => {
+        const { o, def } = e;
+        const heavy = !def.vehicle;
+        push(`<polygon data-kind="equipment" data-equipment-id="${esc(o.userData.equipmentId)}" points="${poly(equipmentCorners(e))}" fill="${heavy ? C.equipHeavy : C.equip}" fill-opacity="0.8" stroke="${C.equipInk}" stroke-width="1.2"/>`);
+        // 向き（前方）を示す線：ブーム・アーム・リーダ方向
+        const reach = def.armLength || def.footprint.length / 2;
+        const tip = localToWorld(o.position.x, o.position.z, o.rotation.y, reach, 0);
+        push(`<line x1="${X(o.position.x)}" y1="${Y(o.position.z)}" x2="${X(tip.x)}" y2="${Y(tip.z)}" stroke="${C.equipInk}" stroke-width="${def.armLength ? 2.2 : 1}"/>`);
+        push(`<circle cx="${X(tip.x)}" cy="${Y(tip.z)}" r="2" fill="${C.equipInk}"/>`);
+    });
+    d.equipment.forEach(e => {
+        const { o, def } = e;
+        const y = Math.max(...equipmentCorners(e).map(q => Y(q.z)));
+        push(label(X(o.position.x), y + 13, def.short, { size: 10.5, color: C.equipInk, weight: 700 }));
+        if (def.hazard) {
+            push(label(X(o.position.x), Y(o.position.z) - M(def.hazard.radius) - 4,
+                `${def.hazard.label} R=${f1(def.hazard.radius)}m`, { size: 10, color: C.hazard, weight: 700 }));
+        }
+    });
+    push(`</g>`);
+
     // 旋回中心 → 吊荷の作業半径
     if (d.center) {
         push(`<g data-layer="reach">`);
@@ -331,6 +377,8 @@ export function buildPlanSVG() {
         [`<rect width="14" height="9" fill="url(#pv-hatch)" stroke="${C.forbidden}"/>`, '立入禁止区'],
         [`<rect width="14" height="9" fill="${C.path}" fill-opacity="0.25"/>`, '通路（幅 1m）'],
         [`<rect width="14" height="9" fill="${C.plate}" fill-opacity="0.55" stroke="${C.plateInk}"/>`, '敷鉄板'],
+        [`<rect width="14" height="9" fill="${C.equipHeavy}" fill-opacity="0.8" stroke="${C.equipInk}"/>`, '重機（車両は灰色）'],
+        [`<line x1="0" y1="5" x2="14" y2="5" stroke="${C.hazard}" stroke-width="1.5" stroke-dasharray="2 2"/>`, '重機の作業・転倒範囲'],
     ];
     const lx0 = 40, ly0 = top + 58;
     push(`<g data-layer="legend">`);

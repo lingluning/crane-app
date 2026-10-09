@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { scene } from './scene.js';
 import { state } from './state.js';
 import {
-    placeCrane, placeLoadPick, placeLoadDrop, placePlate,
+    placeCrane, placeLoadPick, placeLoadDrop, placePlate, placeEquipment,
     updateCraneRadius, updateCounters, updateCraneButton,
     removeObjectFully, setSelection, showToast
 } from './tools.js';
@@ -39,6 +39,9 @@ export function serialize() {
             }),
             ...(obj.userData.type === 'plate' && {
                 size: obj.userData.size
+            }),
+            ...(obj.userData.type === 'equipment' && {
+                equipmentId: obj.userData.equipmentId
             }),
             ...((obj.userData.type === 'forbidden' || obj.userData.type === 'path') && {
                 points: obj.userData.points
@@ -114,6 +117,9 @@ export function deserialize(data) {
             case 'plate':
                 if (item.size) state.currentPlateSize = item.size;
                 placePlate(point);
+                break;
+            case 'equipment':
+                if (item.equipmentId) placeEquipment(point, item.equipmentId, item.rotation || 0);
                 break;
             case 'forbidden':
                 if (item.points && item.points.length >= 3) {

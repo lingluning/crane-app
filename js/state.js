@@ -17,4 +17,8 @@ export const state = {
     currentOutriggerMode: 'maxFull',    // 当前张出模式 key
 
     actualLoad: 5.0,
+
+    // 建造メニュー：配置中の重機と、配置時の向き（R キーで 15° ずつ回す）
+    currentEquipmentId: null,
+    placementRotation: 0,
 };

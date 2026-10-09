@@ -5,7 +5,7 @@ import {
 
 import {
     selectTool, updateGhost,
-    placeCrane, placeLoadPick, placeLoadDrop, placePlate,  // ⭐
+    placeCrane, placeLoadPick, placeLoadDrop, placePlate, placeEquipment,
     handleSelect, snapToGrid, updateCounters,
     updateCraneRadius, updateCraneButton,
     showToast, removeObjectFully, translatePlaced, finalizePlacedMove,
@@ -39,6 +39,7 @@ import {
 import { updateBoomVisuals } from './boom-visual.js';
 import { updateSwingCheck } from './swing-check.js';
 import { updateGroundPressure } from './ground-pressure.js';
+import { initBuildMenu } from './build-menu.js';
 import {
     openPlanView, closePlanView, downloadPlanSVG, downloadPlanPNG, insertPlanIntoReport
 } from './plan-view.js';
@@ -126,6 +127,7 @@ window.addEventListener('click', (event) => {
         case 'forbidden': addForbiddenPoint(point); break;
         case 'path': addPathPoint(point); break;
         case 'measure': addMeasurePoint(point); break;
+        case 'equipment': placeEquipment(point, state.currentEquipmentId, state.placementRotation); break;
     }
     if (state.placedObjects.length > beforeCount) snapshot();
 });
@@ -511,6 +513,13 @@ window.addEventListener('keydown', (event) => {
     }
 
     if ((event.key === 'r' || event.key === 'R') && !inInput) {
+        // 重機の配置中は、置く前のゴーストの向きを回す
+        if (state.currentTool === 'equipment') {
+            const step = (event.shiftKey ? -1 : 1) * Math.PI / 12;   // 15°
+            state.placementRotation = (state.placementRotation + step) % (Math.PI * 2);
+            if (state.ghost) state.ghost.rotation.y = state.placementRotation;
+            return;
+        }
         if (state.selectedObjects.length > 0) {
             rotateSelection(Math.PI / 18);
         }
@@ -1113,6 +1122,7 @@ loadModels(() => {
     console.log('🎉 全部加载完成');
 });
 
+initBuildMenu();
 selectTool('crane');
 startAnimationLoop();
 // 自動保存と作業タブへの保存は同じ serialize() 結果を使い回す
