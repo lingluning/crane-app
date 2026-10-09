@@ -279,6 +279,110 @@ try {
     check('Esc で平面図を閉じ、背後のオブジェクトは残る',
         await page.$eval('#plan-view-modal', el => el.classList.contains('hidden')) && await count('crane') === 1);
 
+    console.log('建造メニュー（重機・車両）');
+    await importProject({ version: '2.0', scene: { version: '1.1', objects: [craneItem] } });
+    await wait(800);
+    check('建造メニューに 4 タブが表示される', await page.$$eval('.bm-tab', els => els.length) === 4);
+    check('クレーン配置済みならクレーンのカメオは無効',
+        await page.$eval('.cameo[data-build-key="tool:crane"]', el => el.classList.contains('disabled')));
+
+    await click('.bm-tab[data-tab="heavy"]'); await wait(200);
+    await click('.cameo[data-build-key="eq:ex07"]'); await wait(300);
+    check('カメオを押すと配置モード（READY）になる',
+        await page.$eval('.cameo[data-build-key="eq:ex07"]', el => el.classList.contains('active')));
+    await page.keyboard.press('r'); await page.keyboard.press('r');   // 配置前に 30° 回す
+    await page.mouse.click(800, 500); await wait(500);
+    check('重機を配置できる', await count('equipment') === 1);
+    check('カメオに配置数が出る',
+        await page.$eval('.cameo[data-build-key="eq:ex07"] .cameo-count', el => !el.hidden && el.textContent === '1'));
+
+    const placed = await page.evaluate(async () => {
+        const { state } = await import('./js/state.js');
+        const o = state.placedObjects.find(x => x.userData.type === 'equipment');
+        return { id: o.userData.equipmentId, rot: o.rotation.y, y: o.position.y };
+    });
+    check('R キーで配置向きを回せる', placed.id === 'ex07' && Math.abs(placed.rot - Math.PI / 6) < 1e-6, JSON.stringify(placed));
+
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyZ'); await page.keyboard.up('Control');
+    await wait(400);
+    check('重機の配置も撤銷できる', await count('equipment') === 0);
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyY'); await page.keyboard.up('Control');
+    await wait(400);
+
+    // 別方案へ行って戻る（= 保存 → 復元）で種類・向き・高さが変わらない
+    await click('#sheet-tabs .sheet-tab[data-tab-id="tabB"]'); await wait(700);
+    await click('#sheet-tabs .sheet-tab[data-tab-id="tabA"]'); await wait(700);
+    const restored = await page.evaluate(async () => {
+        const { state } = await import('./js/state.js');
+        const o = state.placedObjects.find(x => x.userData.type === 'equipment');
+        return o ? { id: o.userData.equipmentId, rot: o.rotation.y, y: o.position.y } : null;
+    });
+    check('保存・復元で重機の種類・向き・高さが保たれる', restored && restored.id === placed.id &&
+        Math.abs(restored.rot - placed.rot) < 1e-6 && Math.abs(restored.y - placed.y) < 1e-6, JSON.stringify(restored));
+
+    await page.keyboard.press('Escape'); await wait(200);
+    check('Esc で配置モードを抜ける', !(await page.$eval('.cameo[data-build-key="eq:ex07"]', el => el.classList.contains('active'))));
+    await click('#plan-view-btn'); await wait(600);
+    check('平面図に重機と作業範囲が描かれる', await page.evaluate(() =>
+        document.querySelectorAll('#plan-view-canvas [data-kind=equipment][data-equipment-id=ex07]').length === 1 &&
+        document.querySelectorAll('#plan-view-canvas [data-kind=equipment-hazard]').length === 1));
+    await page.keyboard.press('Escape'); await wait(300);
+
+    console.log('レイヤー一覧（左パネル）');
+    await importProject({ version: '2.0', scene: { version: '1.1', objects: [
+        craneItem,
+        { type: 'loadPick', position: at(5, 0), rotation: 0 },
+        { type: 'equipment', equipmentId: 'ex07', position: at(-6, 4), rotation: 0 },
+        { type: 'equipment', equipmentId: 'dump', position: at(-6, -4), rotation: 0 },
+        { type: 'forbidden', position: at(0, 0), rotation: 0, points: nearCorner },
+    ] } });
+    await wait(1000);
+    const layerState = () => page.evaluate(async () => {
+        const { state } = await import('./js/state.js');
+        const byType = t => state.placedObjects.filter(o => o.userData.type === t);
+        return {
+            rows: document.querySelectorAll('#layer-list .layer-row').length,
+            equipRows: document.querySelectorAll('.layer-row[data-layer=equipment] + .obj-list .obj-row').length,
+            forbiddenMask: byType('forbidden')[0]?.layers.mask,
+            forbiddenBorderMask: byType('forbidden')[0]?.userData.border?.layers.mask,
+            selected: state.selectedObject?.userData.equipmentId || state.selectedObject?.userData.type || null,
+            equipment: byType('equipment').length,
+        };
+    });
+    check('レイヤー一覧に 8 レイヤー（距離測定を含む）', (await layerState()).rows === 8);
+    await click('.layer-row[data-layer="equipment"]'); await wait(200);
+    check('レイヤー行をクリックするとオブジェクト一覧が開く', (await layerState()).equipRows === 2);
+    await page.evaluate(() => document.querySelectorAll('.layer-row[data-layer=equipment] + .obj-list .obj-row')[1].click());
+    await wait(500);
+    check('一覧の項目をクリックすると選択される', (await layerState()).selected === 'dump');
+
+    await click('.layer-eye[data-eye="forbidden"]'); await wait(300);
+    let ls = await layerState();
+    check('目のアイコンで禁止区（枠線含む）を非表示にできる', ls.forbiddenMask === 2 && ls.forbiddenBorderMask === 2, JSON.stringify(ls));
+    check('非表示でも安全チェックは禁止区を対象にする', (await text('#safety-radius')).includes('OK'));
+    await click('#layer-aux'); await wait(300);
+    ls = await layerState();
+    check('ヘッダーをクリックすると全レイヤーを再表示', ls.forbiddenMask === 1, JSON.stringify(ls));
+
+    await click('.layer-eye[data-eye="loadPick"]'); await wait(200);
+    await click('.tool-btn[data-tool="loadPick"]'); await wait(200);
+    await page.mouse.click(820, 520); await wait(500);
+    check('非表示レイヤーに新しく置くとそのレイヤーが表示に戻る', await page.evaluate(async () => {
+        const { state } = await import('./js/state.js');
+        return state.placedObjects.filter(o => o.userData.type === 'loadPick').every(o => o.layers.mask === 1);
+    }));
+    await page.keyboard.press('Escape'); await wait(200);
+
+    await page.evaluate(() => {
+        const rows = document.querySelectorAll('.layer-row[data-layer=equipment] + .obj-list .obj-row');
+        rows[0].querySelector('.obj-del').click();
+    });
+    await wait(400);
+    check('一覧のゴミ箱で削除できる', (await layerState()).equipment === 1);
+    await page.keyboard.down('Control'); await page.keyboard.press('KeyZ'); await page.keyboard.up('Control');
+    await wait(500);
+    check('一覧からの削除も撤銷できる', (await layerState()).equipment === 2);
+
     console.log('リサイズ');
     await noNewErrors('ウィンドウリサイズで例外なし', async () => {
         await page.setViewport({ width: 1100, height: 700 }); await wait(500);

@@ -318,6 +318,33 @@
         .toggle-row.on .toggle-box svg { color: white; }
         .toggle-row .toggle-box svg { color: transparent; }
 
+        /* ---- レイヤー一覧（js/scene-tree.js） ---- */
+        .layer-caret { width: 8px; color: var(--text-faint); font-size: 9px; transition: transform .12s; }
+        .layer-caret.open { transform: rotate(90deg); }
+        .layer-name { flex: 1; min-width: 0; }
+        .layer-row .layer-count { margin-left: 0; }
+        .layer-row.is-empty { cursor: default; }
+        .layer-row.is-empty .layer-name { color: var(--text-dim); }
+        .layer-row.is-hidden .layer-name, .layer-row.is-hidden .layer-swatch, .layer-row.is-hidden > .ic { opacity: 0.4; }
+        .layer-eye { width: 20px; height: 20px; display: grid; place-items: center; padding: 0;
+            border: none; border-radius: 3px; background: transparent; color: var(--text-faint); cursor: pointer; }
+        .layer-eye:hover { background: var(--accent-dim); color: var(--accent); }
+        .layer-row.is-hidden .layer-eye { color: var(--danger); }
+        .obj-list { padding: 2px 0 4px; border-left: 1px solid var(--border); margin-left: 17px; }
+        .obj-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px;
+            font-size: 11.5px; cursor: pointer; color: var(--text); }
+        .obj-row:hover { background: var(--surface-alt); }
+        .obj-row.selected { background: var(--accent-dim); color: var(--accent); }
+        .obj-row.muted { opacity: 0.45; }
+        .obj-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .obj-meta { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-faint); }
+        .obj-row.selected .obj-meta { color: var(--accent); }
+        .obj-del { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; visibility: hidden;
+            border: none; border-radius: 3px; background: transparent; color: var(--text-faint); cursor: pointer; }
+        .obj-row:hover .obj-del { visibility: visible; }
+        .obj-del:hover { background: var(--pill-danger-bg); color: var(--danger); }
+        #layer-aux.has-hidden { color: var(--danger); cursor: pointer; }
+
         /* ============================================================
            Right column panels
            ============================================================ */
@@ -574,6 +601,69 @@
         /* CSS2DRenderer container (label layer) — covers full window but transparent */
         body > div:not([id]):not([class]) { z-index: 5; }
 
+        /* ============================================================
+           建造メニュー（赤警サイドバー風の構成、配色はアプリ共通トークン）— js/build-menu.js
+           ============================================================ */
+        @property --bm-p { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+        .build-menu { border-bottom: 1px solid var(--border); user-select: none; }
+        .bm-head { cursor: pointer; }
+        .bm-caret { margin-left: 6px; color: var(--text-faint); font-size: 9px; transition: transform .15s; }
+        .build-menu.collapsed .bm-caret { transform: rotate(-90deg); }
+        .build-menu.collapsed .bm-body { display: none; }
+        .bm-tabs {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+            margin: 0 12px 8px; padding: 2px; border-radius: 5px;
+            background: var(--surface-alt); border: 1px solid var(--border);
+        }
+        .bm-tab {
+            height: 24px; padding: 0; cursor: pointer; border-radius: 3px;
+            background: transparent; border: 1px solid transparent;
+            color: var(--text-dim); font-family: inherit; font-size: 11.5px; font-weight: 500;
+        }
+        .bm-tab:hover:not(.active) { color: var(--text); background: var(--surface); }
+        .bm-tab.active {
+            background: var(--surface); color: var(--accent); font-weight: 600;
+            border-color: var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+        .bm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px; }
+        .cameo {
+            position: relative; aspect-ratio: 64 / 54; padding: 0; overflow: hidden; cursor: pointer;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+            font-family: inherit; color: var(--text);
+            transition: border-color .12s, background .12s;
+        }
+        .cameo svg { position: absolute; left: 6%; top: 15%; width: 88%; height: calc(85% - 22px); }
+        .cameo:hover:not(.disabled) { border-color: var(--border-strong); background: var(--surface-alt); }
+        .cameo-name {
+            position: absolute; left: 0; right: 0; bottom: 0; height: 18px; line-height: 18px;
+            padding: 0 4px; border-top: 1px solid var(--border); background: var(--surface-alt);
+            font-size: 11px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .cameo-spec { position: absolute; left: 5px; top: 3px; z-index: 1;
+            font: 9.5px 'JetBrains Mono', monospace; color: var(--text-faint); }
+        .cameo-count { position: absolute; right: 4px; top: 3px; z-index: 1; min-width: 16px; height: 15px;
+            padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff;
+            font: 600 9.5px/15px 'JetBrains Mono', monospace; text-align: center; }
+        .cameo.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-dim); }
+        .cameo.active .cameo-name { background: var(--accent); color: #fff; border-top-color: var(--accent); }
+        .cameo.active::after {
+            content: 'READY'; position: absolute; left: 50%; top: 3px; transform: translateX(-50%); z-index: 2;
+            padding: 0 6px; border-radius: 8px; background: var(--ok); color: #fff;
+            font: 600 9px/15px 'JetBrains Mono', monospace; letter-spacing: 0.1em;
+        }
+        .cameo.disabled { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
+        .cameo.building::before {
+            content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+            background: conic-gradient(transparent var(--bm-p), color-mix(in srgb, var(--accent) 22%, transparent) 0);
+            animation: bm-wipe .4s linear forwards;
+        }
+        @keyframes bm-wipe { from { --bm-p: 0%; } to { --bm-p: 100%; } }
+        .bm-status {
+            padding: 7px 12px 10px; color: var(--text-faint);
+            font: 10.5px 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .bm-status.ready { color: var(--accent); }
+
         /* Tool icon SVGs */
         .ic { display: inline-block; vertical-align: middle; }
     </style>
@@ -620,6 +710,8 @@
             <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
             <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l10 17H2L12 4z"/><path d="M12 11v4"/><circle cx="12" cy="18" r="0.6" fill="currentColor"/></symbol>
             <symbol id="i-planview" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><circle cx="10" cy="11" r="4.5" stroke-dasharray="2 2"/><rect x="8.5" y="9.5" width="3" height="3"/><path d="M15.5 16.5h2.5M3 18h18"/></symbol>
+            <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+            <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0112 5.5C18.4 5.5 22 12 22 12a17 17 0 01-3.1 3.9M6.4 6.9C3.7 8.6 2 12 2 12s3.6 6.5 10 6.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/></symbol>
             <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0115.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></symbol>
         </defs>
     </svg>
@@ -701,44 +793,10 @@
     <aside class="left-rail">
         <div class="rail-head">
             <span>レイヤー</span>
-            <span class="rail-head-aux">6 / 6</span>
+            <span class="rail-head-aux" id="layer-aux"></span>
         </div>
-        <div class="layer-row" data-layer="crane">
-            <svg class="ic" width="13" height="13"><use href="#i-crane"/></svg>
-            <div class="layer-swatch" style="background:#fbbf24"></div>
-            <span>クレーン</span>
-            <span class="layer-count" id="count-crane">0</span>
-        </div>
-        <div class="layer-row" data-layer="loadPick">
-            <svg class="ic" width="13" height="13"><use href="#i-pickup"/></svg>
-            <div class="layer-swatch" style="background:#16a34a"></div>
-            <span>起吊位置</span>
-            <span class="layer-count" id="count-loadPick">0</span>
-        </div>
-        <div class="layer-row" data-layer="loadDrop">
-            <svg class="ic" width="13" height="13"><use href="#i-drop"/></svg>
-            <div class="layer-swatch" style="background:#dc2626"></div>
-            <span>卸荷位置</span>
-            <span class="layer-count" id="count-loadDrop">0</span>
-        </div>
-        <div class="layer-row" data-layer="plate">
-            <svg class="ic" width="13" height="13"><use href="#i-plate"/></svg>
-            <div class="layer-swatch" style="background:#e7c14b"></div>
-            <span>敷鉄板</span>
-            <span class="layer-count" id="count-plate">0</span>
-        </div>
-        <div class="layer-row" data-layer="forbidden">
-            <svg class="ic" width="13" height="13"><use href="#i-forbidden"/></svg>
-            <div class="layer-swatch" style="background:#dc2626"></div>
-            <span>禁止区</span>
-            <span class="layer-count" id="count-forbidden">0</span>
-        </div>
-        <div class="layer-row" data-layer="path">
-            <svg class="ic" width="13" height="13"><use href="#i-path"/></svg>
-            <div class="layer-swatch" style="background:#16a34a"></div>
-            <span>通路</span>
-            <span class="layer-count" id="count-path">0</span>
-        </div>
+        <!-- js/scene-tree.js が描画：表示切替・オブジェクト一覧・選択・削除 -->
+        <div id="layer-list"></div>
 
         <div class="rail-head" style="margin-top:8px"><span>機材</span></div>
         <div style="padding:8px 12px 14px">
@@ -747,8 +805,8 @@
                 <select id="crane-model-select"></select>
             </div>
             <div class="field" style="margin-bottom:0">
-                <label>表示中の半径</label>
-                <div class="panel-val" id="info-count" style="font-size:18px;font-weight:600">0 台</div>
+                <label>作業半径（配置中のクレーン）</label>
+                <div class="panel-val" id="rail-crane-radius" style="font-size:18px;font-weight:600"></div>
             </div>
         </div>
     </aside>
@@ -757,6 +815,21 @@
          Right column — inspector + weather + safety + load + crane
          ============================================================ -->
     <aside class="right-col">
+
+        <!-- 建造メニュー（赤警サイドバー風）— 中身は js/build-menu.js が描画 -->
+        <div class="build-menu" id="build-menu">
+            <div class="panel-head bm-head" title="クリックで開閉">
+                <svg class="ic" width="12" height="12"><use href="#i-crane"/></svg>
+                <span>建造</span>
+                <span class="panel-head-aux">CONSTRUCTION</span>
+                <span class="bm-caret">▼</span>
+            </div>
+            <div class="bm-body">
+                <div class="bm-tabs"></div>
+                <div class="bm-grid"></div>
+                <div class="bm-status">ユニットを選択してください</div>
+            </div>
+        </div>
 
         <!-- Selection inspector -->
         <div class="panel-card hidden" id="info-panel">
@@ -933,6 +1006,7 @@
             <div class="status-item" title="敷鉄板"><svg class="ic" width="11" height="11"><use href="#i-plate"/></svg><span style="color:var(--text)" id="count-plate-status">0</span></div>
             <div class="status-item" title="禁止区"><svg class="ic" width="11" height="11"><use href="#i-forbidden"/></svg><span style="color:var(--text)" id="count-forbidden-status">0</span></div>
             <div class="status-item" title="通路"><svg class="ic" width="11" height="11"><use href="#i-path"/></svg><span style="color:var(--text)" id="count-path-status">0</span></div>
+            <div class="status-item" title="重機・車両">🚜<span style="color:var(--text)" id="count-equipment-status">0</span></div>
         </div>
     </div>
 
@@ -1251,7 +1325,7 @@ Full license text: https://openfontlicense.org</pre>
 
 
     <!-- ============================================================
-         Inline glue: theme toggle, status-bar count mirroring, layer-row → tool
+         Inline glue: theme toggle, OSS license modal
          ============================================================ -->
     <script>
         // テーマ切替（light <-> dark） + localStorage 永続化
@@ -1271,36 +1345,6 @@ Full license text: https://openfontlicense.org</pre>
                 apply(next);
             });
         })();
-
-        // レイヤー行クリック → 対応するツールに切替（main.js の data-tool ボタンへ委譲）
-        document.querySelectorAll('.layer-row').forEach(row => {
-            row.addEventListener('click', () => {
-                const layer = row.dataset.layer;
-                const target = document.querySelector(`.tool-btn[data-tool="${layer}"]`);
-                if (target) target.click();
-            });
-        });
-
-        // tools.js は count-${type} ID 1 個しか更新しないので、
-        // 左ペインとステータスバーの両方を反映するための MutationObserver。
-        ['crane','loadPick','loadDrop','plate','forbidden','path'].forEach(type => {
-            const src = document.getElementById(`count-${type}`);
-            const dst = document.getElementById(`count-${type}-status`);
-            if (!src || !dst) return;
-            new MutationObserver(() => { dst.textContent = src.textContent; })
-                .observe(src, { childList: true, characterData: true, subtree: true });
-        });
-
-        // 工具按钮のアクティブ状態を、対応するレイヤー行にも反映
-        const _origActiveSync = () => {
-            document.querySelectorAll('.tool-btn').forEach(b => {
-                const layer = document.querySelector(`.layer-row[data-layer="${b.dataset.tool}"]`);
-                if (layer) layer.classList.toggle('active', b.classList.contains('active'));
-            });
-        };
-        new MutationObserver(_origActiveSync)
-            .observe(document.querySelector('.ribbon'),
-                { attributes: true, subtree: true, attributeFilter: ['class'] });
 
         // OSS ライセンスモーダル：About 内の「📜 オープンソースライセンス一覧」リンクから開く
         (function () {

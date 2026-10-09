@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { scene, raycaster, models, applyToonStyle } from './scene.js';
 import { state } from './state.js';
 import { getCrane } from './crane-database.js';
+import { getEquipment } from './equipment-catalog.js';
+import { buildEquipmentModel, buildEquipmentGhost } from './equipment-models.js';
 import { CSS2DObject } from './scene.js';
 
 
@@ -40,7 +42,7 @@ function disposeObject3D(obj) {
 
 // ============= 完整移除一个 placedObject =============
 function removeCSSLabel(lbl, parent) {
-    if (!lbl) return;
+    if (!lbl || !lbl.isObject3D) return;   // 起吊・卸荷の userData.label は文字列
     if (parent && parent.children.includes(lbl)) parent.remove(lbl);
     else scene.remove(lbl);
     if (lbl.element && lbl.element.parentNode) lbl.element.parentNode.removeChild(lbl.element);
@@ -94,7 +96,8 @@ export function selectTool(toolName) {
     document.querySelectorAll('.tool-btn').forEach(b => {
         b.classList.remove('active');
     });
-    document.querySelector(`[data-tool="${toolName}"]`).classList.add('active');
+    // 重機（equipment）はリボンにボタンが無く、建造メニューからのみ選ぶ
+    document.querySelector(`.tool-btn[data-tool="${toolName}"]`)?.classList.add('active');
 
     updateGhost();
     
@@ -120,16 +123,34 @@ export function selectTool(toolName) {
     } else if (toolName === 'measure') {
         document.getElementById('hint-text').textContent = '📏 2 点をクリックして距離を測定';
         hint.classList.remove('hidden');
+    } else if (toolName === 'equipment') {
+        const def = getEquipment(state.currentEquipmentId);
+        document.getElementById('hint-text').textContent =
+            `🚜 ${def ? def.name : '重機'}：地面をクリックで配置 / R で向きを回転 / Esc で終了`;
+        hint.classList.remove('hidden');
     } else {
         hint.classList.add('hidden');
     }
+
+    // 建造メニューなど、ツールの状態を表示している UI に知らせる
+    window.dispatchEvent(new CustomEvent('tool-changed', { detail: { tool: toolName } }));
 }
 
 // ============= Ghost =============
 export function updateGhost() {
     if (state.ghost) {
         scene.remove(state.ghost);
+        disposeObject3D(state.ghost);   // ゴーストは毎回新規生成なので共有リソースは無い
         state.ghost = null;
+    }
+
+    if (state.currentTool === 'equipment') {
+        const def = getEquipment(state.currentEquipmentId);
+        if (!def) return;
+        state.ghost = buildEquipmentGhost(def);
+        state.ghost.rotation.y = state.placementRotation;
+        scene.add(state.ghost);
+        return;
     }
 
     let geometry, material;
@@ -398,6 +419,23 @@ export function placePlate(point) {
     updateCounters();
 }
 
+// 重機・車両（建造メニュー）
+export function placeEquipment(point, equipmentId, rotation = state.placementRotation) {
+    const def = getEquipment(equipmentId);
+    if (!def) {
+        showToast(`未登録の重機です: ${equipmentId}`, 'error');
+        return null;
+    }
+    const obj = buildEquipmentModel(def);
+    obj.position.copy(point);          // 原点 = 接地面。保存値に上乗せしないので読込でずれない
+    obj.rotation.y = rotation;
+    obj.userData = { type: 'equipment', equipmentId };
+    scene.add(obj);
+    state.placedObjects.push(obj);
+    updateCounters();
+    return obj;
+}
+
 // ============= 选择 / 高亮 =============
 // 単一クリック選択：交点があれば setSelection、なければクリア
 export function handleSelect() {
@@ -455,6 +493,7 @@ export function setSelection(objects, primary = null) {
 
     showInfo(state.selectedObject);
     updateCraneControlPanel();
+    window.dispatchEvent(new CustomEvent('selection-changed'));
 }
 
 function updateCraneControlPanel() {
@@ -631,8 +670,22 @@ export function showInfo(obj) {
         ? `<div class="text-xs text-yellow-300 mt-1">${selCount} 個を選択中${grouped ? '（グループ）' : ''}</div>`
         : (grouped ? `<div class="text-xs text-yellow-300 mt-1">グループ所属</div>` : '');
 
+    let kind = typeNames[obj.userData.type] || obj.userData.type;
+    let extra = '';
+    if (obj.userData.type === 'equipment') {
+        const def = getEquipment(obj.userData.equipmentId);
+        kind = `🚜 ${def ? def.name : obj.userData.equipmentId}`;
+        if (def) {
+            const deg = Math.round(((obj.rotation.y * 180 / Math.PI) % 360 + 360) % 360);
+            extra = `<div>寸法: ${def.footprint.length} × ${def.footprint.width} m / 約 ${def.weight} t</div>` +
+                (def.hazard ? `<div>${def.hazard.label}: R=${def.hazard.radius} m</div>` : '') +
+                `<div>向き: ${deg}°（R で回転）</div>`;
+        }
+    }
+
     content.innerHTML = `
-        <div>種類: ${typeNames[obj.userData.type] || obj.userData.type}</div>
+        <div>種類: ${kind}</div>
+        ${extra}
         <div>位置: X=${obj.position.x.toFixed(1)}, Z=${obj.position.z.toFixed(1)}</div>
         ${multiInfo}
         <div class="text-xs text-slate-400 mt-2">Ctrl+クリックで多選 / 右クリックでメニュー</div>
@@ -641,12 +694,13 @@ export function showInfo(obj) {
 }
 
 export function updateCounters() {
-    const types = ['crane', 'loadPick', 'loadDrop', 'plate', 'forbidden', 'path'];
+    const types = ['crane', 'loadPick', 'loadDrop', 'plate', 'forbidden', 'path', 'equipment'];
     types.forEach(type => {
         const count = state.placedObjects.filter(o => o.userData.type === type).length;
         const el = document.getElementById(`count-${type}`);
         if (el) el.textContent = count;
     });
+    window.dispatchEvent(new CustomEvent('placed-objects-changed'));
 }
 
 
