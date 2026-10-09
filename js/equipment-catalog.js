@@ -105,23 +105,23 @@ const excavatorIcon =
 const ICONS = {
     crane:
         `<line x1="16" y1="24" x2="60" y2="4" stroke="${Y}" stroke-width="4.5" stroke-linecap="round"/>` +
-        `<line x1="60" y1="4" x2="60" y2="20" stroke="#cfd6dc" stroke-width="1"/>` +
-        `<path d="M58,20 h4 l-2,4 z" fill="#cfd6dc"/>` +
+        `<line x1="60" y1="4" x2="60" y2="20" stroke="#7b8590" stroke-width="1"/>` +
+        `<path d="M58,20 h4 l-2,4 z" fill="#7b8590"/>` +
         `<rect x="5" y="24" width="46" height="9" rx="1" fill="${Y}" stroke="${K}" stroke-width="0.8"/>` +
         cab(38, 15, 9, 10, W) + wheel(14, 35, 5.5) + wheel(42, 35, 5.5),
     aerial:
         truckBase() +
         `<rect x="8" y="24" width="30" height="6" fill="${W}" stroke="${K}" stroke-width="0.6"/>` +
-        `<line x1="14" y1="24" x2="38" y2="7" stroke="${W}" stroke-width="3" stroke-linecap="round"/>` +
+        `<line x1="14" y1="24" x2="38" y2="7" stroke="#9aa4ad" stroke-width="3" stroke-linecap="round"/>` +
         `<rect x="34" y="1" width="11" height="7" fill="#f97316" stroke="${K}" stroke-width="0.8"/>`,
     loadPick:
-        `<line x1="32" y1="21" x2="32" y2="5" stroke="#cfd6dc" stroke-width="1.5"/>` +
-        `<path d="M26,11 L32,4 L38,11" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linejoin="round"/>` +
+        `<line x1="32" y1="21" x2="32" y2="5" stroke="#7b8590" stroke-width="1.5"/>` +
+        `<path d="M26,11 L32,4 L38,11" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linejoin="round"/>` +
         `<rect x="21" y="21" width="22" height="15" fill="#16a34a" stroke="${K}" stroke-width="0.8"/>` +
         `<line x1="10" y1="38" x2="54" y2="38" stroke="#6b7480" stroke-width="1"/>`,
     loadDrop:
-        `<line x1="32" y1="4" x2="32" y2="20" stroke="#cfd6dc" stroke-width="1.5"/>` +
-        `<path d="M26,12 L32,19 L38,12" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linejoin="round"/>` +
+        `<line x1="32" y1="4" x2="32" y2="20" stroke="#7b8590" stroke-width="1.5"/>` +
+        `<path d="M26,12 L32,19 L38,12" fill="none" stroke="#dc2626" stroke-width="2.5" stroke-linejoin="round"/>` +
         `<rect x="21" y="22" width="22" height="15" fill="#dc2626" stroke="${K}" stroke-width="0.8"/>` +
         `<line x1="10" y1="38" x2="54" y2="38" stroke="#6b7480" stroke-width="1"/>`,
     ex07: excavatorIcon,
@@ -156,7 +156,7 @@ const ICONS = {
     pump:
         `<rect x="4" y="23" width="40" height="7" fill="${W}" stroke="${K}" stroke-width="0.6"/>` +
         `<rect x="8" y="17" width="6" height="6" fill="#9aa4ad"/>` +
-        `<path d="M11,17 H41 M41,17 L41,13 M41,13 H9 M9,13 L9,9 M9,9 H38" fill="none" stroke="#d8dde2" stroke-width="2.6" stroke-linejoin="round"/>` +
+        `<path d="M11,17 H41 M41,17 L41,13 M41,13 H9 M9,13 L9,9 M9,9 H38" fill="none" stroke="#9aa4ad" stroke-width="2.6" stroke-linejoin="round"/>` +
         truckBase(),
     plate:
         `<polygon points="8,32 44,32 54,24 18,24" fill="#c9a43a" stroke="#7a5f12" stroke-width="0.8"/>` +
@@ -172,8 +172,8 @@ const ICONS = {
         `<rect x="8" y="37" width="14" height="2.5" fill="#333"/><rect x="42" y="37" width="14" height="2.5" fill="#333"/>`,
     path:
         `<path d="M6,38 C20,32 26,28 34,20 S50,10 58,8" fill="none" stroke="#16a34a" stroke-opacity="0.35" stroke-width="7" stroke-linecap="round"/>` +
-        `<path d="M6,38 C20,32 26,28 34,20 S50,10 58,8" fill="none" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="4 3"/>` +
-        `<path d="M52,6 L59,8 L54,13" fill="none" stroke="#4ade80" stroke-width="1.8"/>`,
+        `<path d="M6,38 C20,32 26,28 34,20 S50,10 58,8" fill="none" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="4 3"/>` +
+        `<path d="M52,6 L59,8 L54,13" fill="none" stroke="#16a34a" stroke-width="1.8"/>`,
 };
 
 export function cameoSVG(iconKey) {
