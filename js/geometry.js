@@ -56,3 +56,21 @@ export function pointInAnnularSectorXZ(p, c, rMin, rMax, start, delta) {
     const rel = ((start - a) % TWO_PI + TWO_PI) % TWO_PI;
     return rel <= -delta;
 }
+
+// 点 p から線分 ab までの距離
+export function distPointToSegmentXZ(p, a, b) {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2));
+    return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t));
+}
+
+// 円（中心 c・半径 r、内部を含む）と多角形が重なるか。
+// 中心が多角形内、または多角形のどれかの辺が円に届けば重なる（多角形が円内に収まる場合も辺が届く）。
+export function circleIntersectsPolygonXZ(c, r, polygon) {
+    if (pointInPolygonXZ(c.x, c.z, polygon)) return true;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        if (distPointToSegmentXZ(c, polygon[j], polygon[i]) <= r) return true;
+    }
+    return false;
+}

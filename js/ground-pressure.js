@@ -26,7 +26,7 @@ function craneWeightTons(craneData) {
 }
 
 // アウトリガ 4 本の接地点（世界座標 XZ）。張出幅を一辺とする正方形で近似する。
-function outriggerPositions(crane, craneData) {
+export function outriggerPositions(crane, craneData) {
     const mode = craneData?.outrigger?.modes?.[state.currentOutriggerMode];
     const half = (mode?.extensionWidth ?? DEFAULT_EXTENSION_WIDTH) / 2;
     const center = getCraneCenter(crane);
@@ -40,7 +40,7 @@ function outriggerPositions(crane, craneData) {
 }
 
 // 敷鉄板の上に乗っているか（板は回転しうるのでローカル座標に戻して判定）
-function plateUnder(px, pz) {
+export function plateUnder(px, pz) {
     const plates = state.placedObjects.filter(o => o.userData.type === 'plate' && o.userData.size);
     for (const plate of plates) {
         const { x: sx, z: sz } = plate.userData.size;
